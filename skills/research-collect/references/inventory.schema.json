@@ -1,0 +1,112 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "inventory.schema.json",
+  "title": "Source Inventory",
+  "description": "Schema for the source inventory produced by the collection phase",
+  "type": "object",
+  "required": ["sources"],
+  "properties": {
+    "sources": {
+      "type": "array",
+      "description": "Array of collected source metadata",
+      "items": {
+        "type": "object",
+        "required": [
+          "url",
+          "source_title",
+          "source_type",
+          "content_type",
+          "source_tier",
+          "freshness",
+          "fetched_at",
+          "extraction_method",
+          "content_hash",
+          "evidence_file"
+        ],
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Source URL or local file path",
+            "minLength": 1
+          },
+          "source_title": {
+            "type": "string",
+            "description": "Human-readable title",
+            "minLength": 1
+          },
+          "source_type": {
+            "type": "string",
+            "description": "Source origin type",
+            "enum": ["web", "local"]
+          },
+          "content_type": {
+            "type": "string",
+            "description": "Content category",
+            "enum": ["docs", "blog", "code", "paper", "forum", "other"]
+          },
+          "source_tier": {
+            "type": "integer",
+            "description": "Quality tier (1=official docs, 5=weak/low-signal)",
+            "minimum": 1,
+            "maximum": 5
+          },
+          "freshness": {
+            "type": "object",
+            "description": "Freshness metadata",
+            "required": ["publication_date", "freshness_score"],
+            "properties": {
+              "publication_date": {
+                "description": "ISO 8601 date string or null if unknown",
+                "oneOf": [
+                  {"type": "string", "minLength": 1},
+                  {"type": "null"}
+                ]
+              },
+              "freshness_score": {
+                "type": "number",
+                "description": "Freshness score from 0.0 (stale) to 1.0 (very fresh)",
+                "minimum": 0.0,
+                "maximum": 1.0
+              }
+            },
+            "additionalProperties": false
+          },
+          "fetched_at": {
+            "type": "string",
+            "description": "ISO 8601 timestamp of when content was fetched",
+            "minLength": 1
+          },
+          "extraction_method": {
+            "type": "string",
+            "description": "Tool used to extract content",
+            "enum": ["crawl4ai", "docling", "urllib_html2markdown"]
+          },
+          "content_hash": {
+            "type": "string",
+            "description": "SHA-256 hash of content for deduplication",
+            "minLength": 1
+          },
+          "evidence_file": {
+            "type": "string",
+            "description": "Relative path to evidence markdown file",
+            "minLength": 1
+          },
+          "quality_notes": {
+            "type": "string",
+            "description": "Free-form quality notes from the collector"
+          },
+          "suspicious": {
+            "type": "boolean",
+            "description": "True if quarantine classifier flagged as suspicious"
+          },
+          "exclude_from_synthesis": {
+            "type": "boolean",
+            "description": "True if this source should be excluded from synthesis (e.g. quarantined off-topic items)"
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

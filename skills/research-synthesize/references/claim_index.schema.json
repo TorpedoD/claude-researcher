@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "claim_index.schema.json",
+  "title": "Claim Index",
+  "description": "Schema for the claim-to-source mapping produced by the synthesis phase",
+  "type": "object",
+  "required": ["claims", "metadata"],
+  "properties": {
+    "claims": {
+      "type": "array",
+      "description": "Array of factual claims with supporting sources",
+      "items": {
+        "type": "object",
+        "required": ["claim_text", "claim_hash", "section", "sources"],
+        "properties": {
+          "claim_text": {
+            "type": "string",
+            "description": "The factual claim text as it appears in raw_research.md",
+            "minLength": 1
+          },
+          "claim_hash": {
+            "type": "string",
+            "description": "SHA-256 hash of normalized claim text",
+            "minLength": 1
+          },
+          "section": {
+            "type": "string",
+            "description": "Section heading where the claim appears",
+            "minLength": 1
+          },
+          "sources": {
+            "type": "array",
+            "description": "Supporting sources for this claim",
+            "items": {
+              "type": "object",
+              "required": ["url", "source_title", "tier", "freshness"],
+              "properties": {
+                "url": {
+                  "type": "string",
+                  "description": "Source URL matching inventory.json entry",
+                  "minLength": 1
+                },
+                "source_title": {
+                  "type": "string",
+                  "description": "Source title for display",
+                  "minLength": 1
+                },
+                "tier": {
+                  "type": "integer",
+                  "description": "Source quality tier (1=official docs, 5=weak)",
+                  "minimum": 1,
+                  "maximum": 5
+                },
+                "freshness": {
+                  "type": "string",
+                  "description": "Freshness score or publication date",
+                  "minLength": 1
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "origin": {
+            "type": "string",
+            "description": "Provenance label for gap-fill pipeline (SYNTH-12): original=from pass-1 evidence, gap-fill=introduced by gap-fill re-synthesis",
+            "enum": ["original", "gap-fill"]
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Aggregate statistics about the claim index",
+      "required": ["total_claims", "citation_coverage_pct", "avg_sources_per_claim"],
+      "properties": {
+        "total_claims": {
+          "type": "integer",
+          "description": "Total number of claims indexed",
+          "minimum": 0
+        },
+        "citation_coverage_pct": {
+          "type": "number",
+          "description": "Percentage of claims with at least one citation",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "avg_sources_per_claim": {
+          "type": "number",
+          "description": "Average number of supporting sources per claim",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

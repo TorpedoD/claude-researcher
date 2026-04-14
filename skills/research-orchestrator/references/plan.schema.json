@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "plan.schema.json",
+  "title": "Research Plan",
+  "description": "Schema for the research plan produced by the orchestrator during the planning phase",
+  "type": "object",
+  "required": ["subtopics", "priorities", "expected_source_types", "estimated_coverage_areas"],
+  "properties": {
+    "subtopics": {
+      "type": "array",
+      "description": "Research subtopics with priority ranking and guiding questions",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Subtopic name (human-readable)",
+            "minLength": 1
+          },
+          "priority": {
+            "type": "integer",
+            "description": "Priority ranking (1 = highest priority)",
+            "minimum": 1
+          },
+          "questions": {
+            "type": "array",
+            "description": "Specific questions to investigate for this subtopic",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "priorities": {
+      "type": "array",
+      "description": "Ordered list of subtopic names by priority (highest first)",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "minItems": 1
+    },
+    "expected_source_types": {
+      "type": "array",
+      "description": "Source types to seek during collection",
+      "items": {
+        "type": "string",
+        "enum": ["docs", "paper", "blog", "code", "forum", "other"]
+      },
+      "minItems": 1
+    },
+    "estimated_coverage_areas": {
+      "type": "array",
+      "description": "Broad topic domains the research should span",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "minItems": 1
+    }
+  },
+  "additionalProperties": false
+}

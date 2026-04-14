@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "question_tree.schema.json",
+  "title": "Research Question Tree",
+  "description": "Schema for the layered question tree produced during scope planning (Phase 10). Encodes the 7-layer investigation taxonomy (D-08/D-09) and the minimum-layer coverage invariant (D-16).",
+  "type": "object",
+  "required": ["root", "layers_populated"],
+  "properties": {
+    "root": { "$ref": "#/$defs/node" },
+    "layers_populated": {
+      "type": "array",
+      "description": "Layers that have at least one L1 node. Minimum of 3 enforces the layered-investigation invariant (D-16).",
+      "minItems": 3,
+      "items": {
+        "type": "string",
+        "enum": [
+          "identity",
+          "purpose",
+          "mechanics",
+          "relations",
+          "comparison",
+          "evidence",
+          "open questions"
+        ]
+      }
+    },
+    "generation": {
+      "type": "object",
+      "description": "Optional provenance for the bridge-question generation step (REL-09). Records which source was used and how many regenerate attempts occurred.",
+      "properties": {
+        "method": {
+          "type": "string",
+          "enum": ["graph_centrality", "subtopic_fallback"]
+        },
+        "top_n": { "type": "integer", "minimum": 1 },
+        "regenerate_attempts": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "node": {
+      "type": "object",
+      "required": ["question", "layer", "depth"],
+      "properties": {
+        "question": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The research question text for this node."
+        },
+        "layer": {
+          "type": "string",
+          "description": "Which of the 7 investigation layers this question belongs to (D-08).",
+          "enum": [
+            "identity",
+            "purpose",
+            "mechanics",
+            "relations",
+            "comparison",
+            "evidence",
+            "open questions"
+          ]
+        },
+        "depth": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 3,
+          "description": "Tree depth: 0 = root (research topic), 1 = layer children, 2-3 = sub-children."
+        },
+        "expected_source_types": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["docs", "paper", "blog", "code", "forum", "other"]
+          }
+        },
+        "branch_priority": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Priority ranking within the tree (1 = highest). Guides crawl budget allocation."
+        },
+        "children": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/node" }
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}
