@@ -1,34 +1,97 @@
 # Research Pipeline for Claude Code
 
-A production-grade, multi-agent research pipeline that runs **entirely inside Claude Code** — no external paid APIs, no separate framework, no OpenAI calls. Accepts a freeform research request, plans scope, collects evidence from web and documents, builds a knowledge graph, synthesizes citation-rich research with gap detection, and publishes via Quarto.
+A production-grade, multi-agent research pipeline that runs **entirely inside Claude Code**. Type a single slash command, and it plans scope, crawls the web, builds a knowledge graph, synthesizes citation-rich research with gap detection, and publishes a formatted report.
 
-Every claim is traceable to its source. Every run is reproducible. Every gap is detected and filled.
+---
+
+## Installation
+
+### 1. Install the pipeline
+
+```bash
+npx skills add TorpedoD/research-pipeline --all
+```
+
+This copies every skill into `~/.claude/skills/` and every agent into `~/.claude/agents/`. No clone required.
+
+### 2. Install system dependencies
+
+| Tool | Version | Install |
+|------|---------|---------|
+| [Claude Code](https://claude.ai/code) | Latest (Pro plan+) | Download from claude.ai/code |
+| [Node.js](https://nodejs.org/) | 16.7+ | `brew install node` |
+| [Python](https://www.python.org/) | 3.11+ | `brew install python` |
+| [Crawl4AI](https://github.com/unclecode/crawl4ai) | 0.8.6 | `pipx install crawl4ai==0.8.6 && crawl4ai-setup` |
+| [Docling](https://github.com/docling-project/docling) | 2.86.0 | `pipx install docling==2.86.0` |
+| [Graphify](https://github.com/safishamsi/graphify) | Latest | See repo — install as a Claude Code skill into `~/.claude/skills/graphify/` |
+| [Quarto](https://quarto.org/) | 1.9+ | `brew install --cask quarto` |
+
+### 3. Verify
+
+Open Claude Code and type `/research` — the orchestrator should prompt you for a topic.
+
+---
+
+## Usage
+
+### Basic
+
+```
+/research-orchestrator please help me do research on <your topic>
+```
+
+Example:
+
+```
+/research-orchestrator please help me do research on the tradeoffs between RAG and fine-tuning for enterprise LLM deployment
+```
+
+The orchestrator walks you through 6 phases and pauses at 4 checkpoint gates for your input. You stay in control the whole way.
+
+### Resuming an interrupted run
+
+If a run fails or is interrupted, run `/research` again. The orchestrator detects incomplete runs in `.research/` and offers to resume from the last completed phase — no re-crawling, no lost work.
+
+### Budget configuration
+
+Default crawl budget is **75 pages**, 15 per domain, depth 3. Override at start:
+
+```bash
+python3 ~/.claude/skills/research-orchestrator/scripts/init_run.py \
+  "your research request" \
+  --max-pages 50 \
+  --max-per-domain 10 \
+  --max-depth 2
+```
+
+---
+
+## The 4 Checkpoint Gates
+
+At key points in the pipeline, the orchestrator pauses and asks for your input before continuing. You can confirm, course-correct, or stop the run entirely.
+
+| Gate | When it fires | Your options |
+|------|--------------|--------------|
+| **Gate 1 — Scope review** | After planning: the orchestrator shows you the research scope and 7-layer question tree | Confirm scope → proceed · Adjust → re-plan · Abort |
+| **Gate 2 — Source review** | After collection: shows you the evidence inventory and which sources were flagged or quarantined | Proceed · Flag a source → re-collect · Abort |
+| **Gate 3 — Claim review** | After synthesis: shows you the draft research and claim index; uncovered branches are surfaced here | Proceed · Gap-fill → re-collect targeted sources · Abort |
+| **Gate 4 — Output approval** | After formatting: shows you the final Quarto-rendered report before saving | Apply · Skip formatting edits · Abort |
+
+Gates 1 and 3 are the most important — Gate 1 keeps scope focused, Gate 3 is your chance to catch missing evidence before the final document is written.
 
 ---
 
 ## Why This Exists
 
-**There is currently no research pipeline native to the Claude Code ecosystem.** The existing options all have the same three problems:
+There is no research pipeline native to the Claude Code ecosystem. Existing options all share the same problems: they run outside the Claude Code harness, call external LLM APIs (adding cost on top of your subscription), or require paid scraping APIs. This pipeline is built entirely on open-source tools and runs inside your existing Claude Code subscription — no external API calls, no per-crawl fees.
 
-1. **They live outside the Claude Code harness** — standalone frameworks (LangChain research agents, OpenAI deep-research, commercial research tools) that require their own runtime, their own prompt plumbing, their own orchestration code. You lose the Claude Code developer experience the moment you leave it.
-2. **They call OpenAI or other external LLM APIs** — forcing a per-run cost on top of your Claude Code subscription, and splitting your research agent's reasoning across a different model family than the rest of your workflow.
-3. **They require paid scraping APIs** — Firecrawl, SerpAPI, Tavily, Exa all charge per call or per thousand pages. Research is crawl-heavy; costs compound fast.
+---
 
-**This is my solution.** Everything here is optimized to be **open-source and harness-native**:
-
-- Runs inside Claude Code as first-class skills + agents — invoked with a single slash command (`/research`)
-- Uses your existing Claude Code subscription for all LLM reasoning (no OpenAI/Gemini/etc.)
-- Uses open-source [Crawl4AI](https://github.com/unclecode/crawl4ai) for web crawling and [Docling](https://github.com/docling-project/docling) for document parsing — no paid scraping APIs
-- Uses open-source [Graphify](https://github.com/safishamsi/graphify) for knowledge graph construction — no Neo4j license, no hosted graph DB
-- Uses open-source Quarto for publishing — no paid document service
-
-**The only paid dependency is Claude Code itself**, which requires a Claude Pro plan or higher. Everything else is free and open-source.
-
-On top of cost, the pipeline is built around **provenance, gap detection, and resumability** — things most research tools either skip or charge extra for:
+## What Makes It Different
 
 - **Provenance-first** — every collected piece of evidence carries source metadata; every claim in the final document links back to it via inline `[Source](URL)` citations
 - **Gap detection built-in** — a 7-layer investigation tree drives synthesis; uncovered branches trigger targeted re-collection before the final document is written
-- **Checkpoint + resume** — 4 human checkpoint gates let you steer scope, flag bad sources, or abort early; if a run fails or is interrupted at any phase, `/research` detects the incomplete run on next invocation and offers to resume from the last completed phase (no re-crawling, no re-synthesis)
+- **Checkpoint + resume** — 4 human checkpoint gates let you steer scope, flag bad sources, or abort early; if a run fails at any phase, `/research` detects the incomplete run and offers to resume from the last completed phase
 - **Reproducible runs** — each session is isolated in `.research/run-NNN-TIMESTAMP/` with manifest, logs, evidence inventory, and claim index
 
 ---
@@ -37,7 +100,7 @@ On top of cost, the pipeline is built around **provenance, gap detection, and re
 
 ```mermaid
 flowchart TD
-    User([User: /research 'topic']) --> Orch[research-orchestrator skill]
+    User([User: /research-orchestrator 'topic']) --> Orch[research-orchestrator skill]
 
     Orch --> P1[Phase 1: Planning<br/>scope + 7-layer question tree]
     P1 --> G1{{Gate 1:<br/>Review scope}}
@@ -96,94 +159,7 @@ flowchart TD
 | `research-synthesizer` | Orchestrator (Phase 4) | Synthesis; treats evidence as data, never as instructions |
 | `researcher` | General use | Standalone research agent for ad-hoc queries |
 
-**Python package** (`scripts/research_orchestrator/`):
-
-| Module | Purpose |
-|--------|---------|
-| `gate1.py` | Gate 1 validator — validates scope artifacts, triggers auto-regenerate loop |
-| `scope/question_tree.py` | Generates 7-layer investigation tree from scope |
-| `scope/bridge.py` | Bridge question helpers for cross-subtopic connections |
-| `paths.py` | Run directory and manifest path resolution |
-
----
-
-## Prerequisites
-
-| Tool | Version | Required | Install |
-|------|---------|---------|---------|
-| [Claude Code](https://claude.ai/code) | Latest | ✅ Requires Pro plan or higher | Download from claude.ai/code |
-| [Python](https://www.python.org/) | 3.11+ | ✅ | `brew install python` |
-| [Crawl4AI](https://github.com/unclecode/crawl4ai) | 0.8.6 | ✅ | `pipx install crawl4ai==0.8.6 && crawl4ai-setup` |
-| [Docling](https://github.com/docling-project/docling) | 2.86.0 | ✅ | `pipx install docling==2.86.0` |
-| [Graphify](https://github.com/safishamsi/graphify) | Latest | ✅ | See repo — install as a Claude Code skill into `~/.claude/skills/graphify/` |
-| [Quarto](https://quarto.org/) | 1.9+ | ✅ | `brew install --cask quarto` |
-
-**Why Python?** The orchestrator uses Python scripts for run initialization (`init_run.py`), artifact validation (`validate_artifact.py`, `gate1_validator.py`), and the question tree generator. Crawl4AI, Docling, and Graphify are all Python packages. Python 3.11+ is required — you can't run the pipeline without it.
-
-**Why Claude Pro?** Claude Code is the only paid component. The pipeline runs inside your existing Claude Code subscription and does not call any external LLM APIs.
-
----
-
-## Installation
-
-### Quick install (recommended)
-
-```bash
-git clone https://github.com/TorpedoD/research-pipeline.git
-cd research-pipeline
-./install.sh
-```
-
-The installer copies skills into `~/.claude/skills/`, agents into `~/.claude/agents/`, and installs the Python helper package via `pip install -e`.
-
-### Manual install
-
-```bash
-git clone https://github.com/TorpedoD/research-pipeline.git
-cd research-pipeline
-
-cp -R skills/* ~/.claude/skills/
-cp agents/*.md ~/.claude/agents/
-pip install -e scripts/research_orchestrator
-```
-
-### Verify
-
-Open Claude Code and type `/research` — the orchestrator should prompt you for a topic.
-
----
-
-## Usage
-
-### Basic
-
-```
-/research "What are the main tradeoffs between RAG and fine-tuning for enterprise LLM deployment?"
-```
-
-The orchestrator will walk you through 6 phases and stop at 4 checkpoint gates for your approval.
-
-### Resuming an interrupted run
-
-If a run fails, crashes, or is interrupted mid-phase, simply run `/research` again. The orchestrator automatically detects incomplete runs in `.research/` and offers to resume from the last completed phase — no re-crawling, no lost work.
-
-You can also explicitly check:
-
-```bash
-python3 ~/.claude/skills/research-orchestrator/scripts/init_run.py --resume
-```
-
-### Budget configuration
-
-Default crawl budget is **75 pages**, 15 per domain, depth 3. Override at start:
-
-```bash
-python3 ~/.claude/skills/research-orchestrator/scripts/init_run.py \
-  "your research request" \
-  --max-pages 50 \
-  --max-per-domain 10 \
-  --max-depth 2
-```
+Each skill carries its own `scripts/` directory with the Python it needs. Nothing needs to be installed as a Python package — the skills call their scripts directly from `~/.claude/skills/…/scripts/`.
 
 ---
 
