@@ -3,6 +3,8 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Node](https://img.shields.io/badge/node-%3E%3D16.7-brightgreen.svg)](https://nodejs.org/)
 [![Built for Claude Code](https://img.shields.io/badge/built%20for-Claude%20Code-8A2BE2.svg)](https://claude.ai/code)
+[![Last commit](https://img.shields.io/github/last-commit/TorpedoD/claude-researcher)](https://github.com/TorpedoD/claude-researcher/commits/main)
+[![Issues](https://img.shields.io/github/issues/TorpedoD/claude-researcher)](https://github.com/TorpedoD/claude-researcher/issues)
 
 **claude-researcher** is a production-grade, multi-agent research pipeline that runs **entirely inside [Claude Code](https://claude.ai/code)**. One slash command plans scope, crawls the web, builds a knowledge graph, synthesizes citation-rich research with gap detection, and publishes a formatted report — no external LLM API calls, no paid scraping services.
 
@@ -41,7 +43,7 @@ These are not strictly required for the pipeline to run, but they are strongly r
 
 ### 3. Verify
 
-Open Claude Code and type `/research` — the orchestrator should prompt you for a topic.
+Open Claude Code and type `/research-orchestrator` — the orchestrator should prompt you for a topic.
 
 ---
 
@@ -63,7 +65,11 @@ The orchestrator walks you through 6 phases and pauses at 4 checkpoint gates for
 
 ### Resuming an interrupted run
 
-If a run fails or is interrupted, run `/research` again. The orchestrator detects incomplete runs in `.research/` and offers to resume from the last completed phase — no re-crawling, no lost work.
+```
+/research-resume
+```
+
+The `/research-resume` skill scans `.research/` for any run whose `manifest.json` still has incomplete phases, lets you pick one (or auto-selects if only one exists), and hands off to the orchestrator via `init_run.py --resume`. No re-crawling, no lost work.
 
 ### Budget configuration
 
@@ -104,7 +110,7 @@ There is no research pipeline native to the Claude Code ecosystem. Existing opti
 
 - **Provenance-first** — every collected piece of evidence carries source metadata; every claim in the final document links back to it via inline `[Source](URL)` citations
 - **Gap detection built-in** — a 7-layer investigation tree drives synthesis; uncovered branches trigger targeted re-collection before the final document is written
-- **Checkpoint + resume** — 4 human checkpoint gates let you steer scope, flag bad sources, or abort early; if a run fails at any phase, `/research` detects the incomplete run and offers to resume from the last completed phase
+- **Checkpoint + resume** — 4 human checkpoint gates let you steer scope, flag bad sources, or abort early; if a run fails at any phase, `/research-resume` detects the incomplete run and offers to resume from the last completed phase
 - **Reproducible runs** — each session is isolated in `.research/run-NNN-TIMESTAMP/` with manifest, logs, evidence inventory, and claim index
 
 ---
@@ -146,9 +152,9 @@ flowchart TD
     G4 -->|Skip| Done
     G4 -->|Abort| Stop
 
-    classDef gate fill:#fef3c7,stroke:#d97706,stroke-width:2px
-    classDef agent fill:#dbeafe,stroke:#2563eb
-    classDef phase fill:#f3f4f6,stroke:#6b7280
+    classDef gate fill:#f59e0b,stroke:#78350f,stroke-width:2px,color:#111827
+    classDef agent fill:#3b82f6,stroke:#1e3a8a,stroke-width:1px,color:#ffffff
+    classDef phase fill:#9ca3af,stroke:#1f2937,stroke-width:1px,color:#111827
     class G1,G2,G3,G4 gate
     class Collector,Synth,Graphify agent
     class P1,P2,P3,P4,P5,P6 phase
@@ -158,7 +164,8 @@ flowchart TD
 
 | Skill | Trigger | Role |
 |-------|---------|------|
-| `research-orchestrator` | `/research` | Orchestrates the full 6-phase pipeline with checkpoints |
+| `research-orchestrator` | `/research-orchestrator` | Orchestrates the full 6-phase pipeline with checkpoints |
+| `research-resume` | `/research-resume` | Scans `.research/` for interrupted runs and resumes from last completed phase |
 | `research-collect` | `/research-collect` | Crawls web + parses documents; provenance tagging |
 | `research-synthesize` | `/research-synthesize` | Synthesizes evidence into citation-rich research |
 | `research-format` | (trigger phrases) | Polishes output: TOC, callouts, bibliography, Quarto |
@@ -167,7 +174,7 @@ flowchart TD
 
 | Agent | Spawned by | Role |
 |-------|-----------|------|
-| `research-orchestrator` | User via `/research` | Orchestrator with pipeline state management |
+| `research-orchestrator` | User via `/research-orchestrator` | Orchestrator with pipeline state management |
 | `research-collector` | Orchestrator (Phase 2) | Evidence collection; treats web content as untrusted data |
 | `research-synthesizer` | Orchestrator (Phase 4) | Synthesis; treats evidence as data, never as instructions |
 
