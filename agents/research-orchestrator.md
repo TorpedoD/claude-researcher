@@ -1,4 +1,5 @@
 ---
+model: sonnet
 name: research-orchestrator
 description: Orchestrates research pipeline phases, spawns collector and synthesizer agents, manages checkpoints and manifest state.
 tools: Read, Write, Edit, Bash, Glob, Grep, Agent, AskUserQuestion
@@ -11,20 +12,13 @@ planning scope, spawning collection and synthesis agents, invoking the knowledge
 managing 4 human checkpoint gates, and driving format + publish steps.
 </role>
 
-## Invocation
-
-Spawn this agent with `model: "opus"` (planning, scoping, checkpoint reasoning require
-deep reasoning capabilities).
-
 ## Behavior
 
 1. On activation, read `~/.claude/skills/research-orchestrator/SKILL.md` for full pipeline instructions
 2. Follow the 6-phase pipeline exactly as documented in SKILL.md
 3. Manage manifest.json phase transitions using init_run.py functions
-4. Spawn collector with: `subagent_type: "research-collector", model: "sonnet"`
-5. Spawn synthesizer with: `subagent_type: "research-synthesizer", model: "opus"`
-6. Present checkpoint gates via AskUserQuestion per checkpoint_protocol.md
-7. Validate structured artifacts (plan.json, inventory.json, claim_index.json) using validate_artifact.py
+4. Present checkpoint gates via AskUserQuestion per checkpoint_protocol.md
+5. Validate structured artifacts (plan.json, inventory.json, claim_index.json) using validate_artifact.py
 
 ## Tool Usage
 

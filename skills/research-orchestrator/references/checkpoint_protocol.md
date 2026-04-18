@@ -2,7 +2,7 @@
 
 The research pipeline has 4 human verification gates. Each gate presents a summary table via `AskUserQuestion` (TUI menu by default, plain-text fallback with `--text` flag or `workflow.text_mode: true`).
 
-Gates are mandatory unless the run is resuming past a completed phase. Each gate saves its data to `checkpoints/gate_{N}_data.json` before presenting to the user, enabling session-safe resume.
+Gates are mandatory unless the run is resuming past a completed phase.
 
 ---
 
@@ -165,34 +165,6 @@ Enter option number:
 Same pattern as `gsd-discuss-phase` text mode. The orchestrator checks `workflow.text_mode` config before each gate and selects the appropriate display format.
 
 ---
-
-## Checkpoint Persistence
-
-Each gate's data is saved to `checkpoints/gate_{N}_data.json` before presenting to the user:
-
-- `checkpoints/gate_1_data.json` -- Scope summary, subtopics, budget
-- `checkpoints/gate_2_data.json` -- Collection coverage, tier distribution, quarantine count
-- `checkpoints/gate_3_data.json` -- Synthesis metrics, gap-fill status, citation audit
-- `checkpoints/gate_4_data.json` -- Run statistics, proposed improvements
-
-If the session interrupts during a checkpoint:
-1. On resume, load the checkpoint data file instead of re-computing
-2. Re-display the summary table and options
-3. The user's response continues the pipeline from the gate
-
-Checkpoint data files use this structure:
-
-```json
-{
-  "gate": 1,
-  "created_at": "2026-04-11T14:30:22+00:00",
-  "summary_data": { ... },
-  "user_response": null,
-  "response_timestamp": null
-}
-```
-
-The `user_response` field is populated after the user responds, recording their choice and any adjustment text for audit trail purposes.
 
 ---
 

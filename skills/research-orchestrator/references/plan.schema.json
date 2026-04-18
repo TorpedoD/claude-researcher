@@ -62,6 +62,58 @@
         "minLength": 1
       },
       "minItems": 1
+    },
+    "section_depths": {
+      "type": "array",
+      "description": "Per-section depth assignments written at Gate 1 (Phase 12 D-09). One entry per section/subsection in the planned output. Depth is LOCKED after Gate 1 approval — synthesizer may expand upward but never downgrade.",
+      "items": {
+        "type": "object",
+        "required": ["section", "depth"],
+        "properties": {
+          "section": {
+            "type": "string",
+            "description": "Section name (typically H2 or H3 heading text)",
+            "minLength": 1
+          },
+          "depth": {
+            "type": "string",
+            "description": "Depth level per Phase 12 D-10/D-11/D-12",
+            "enum": ["low", "medium", "high"]
+          },
+          "justification": {
+            "type": "string",
+            "description": "Why this depth was auto-assigned (e.g. 'L0 question tree node', 'semantic importance: core mechanism')",
+            "minLength": 1
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "depth_overrides": {
+      "type": "array",
+      "description": "User overrides applied at Gate 1 (Phase 12 D-08). Records original auto-assigned depth and user's override for audit.",
+      "items": {
+        "type": "object",
+        "required": ["section", "original_depth", "override_depth"],
+        "properties": {
+          "section": {
+            "type": "string",
+            "minLength": 1
+          },
+          "original_depth": {
+            "type": "string",
+            "enum": ["low", "medium", "high"]
+          },
+          "override_depth": {
+            "type": "string",
+            "enum": ["low", "medium", "high"]
+          },
+          "override_reason": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
     }
   },
   "additionalProperties": false

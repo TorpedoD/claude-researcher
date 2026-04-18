@@ -1,23 +1,6 @@
 ---
 name: research-format
-description: |
-  Formats raw research content into a polished markdown document with adaptive
-  output modes (full report / summary / documentation), optional teaching layer,
-  table of contents, executive summary, restrained mermaid diagrams, tables for
-  comparable data, inline [Source Name](URL) citations, per-section source blocks,
-  and a full end-of-document bibliography grouped by credibility tier. Supports
-  standard Markdown and optional Quarto styling with callouts. This is a
-  post-processing formatter — it does not perform research itself. Use on output
-  from research skills or agents (e.g., the researcher agent's content.md +
-  research.md pair, or any pasted/linked research blob) when the user wants the
-  final document polished for readability, teaching, summary, or presentation.
-
-  Trigger phrases: "format this research", "make this research more readable",
-  "polish this research", "format as a research document", "add visuals to this
-  research", "clean up this research output", "final research format", "turn
-  this research into a polished doc", "research document format", "summarize
-  this research", "make this research beginner-friendly", "teach me this research",
-  "research as documentation", "quarto research format".
+description: Post-processing formatter for raw research — polishes to full report, summary, documentation, or teaching mode with TOC, executive summary, inline citations, bibliography, mermaid diagrams, and optional Quarto callouts. Does not perform research.
 allowed-tools: Read, Write, Edit, Bash, Glob, Grep, AskUserQuestion
 ---
 

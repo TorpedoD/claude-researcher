@@ -102,4 +102,44 @@ def run_gate1_validator(
     return {"status": "warn", "attempts": attempts if regenerate else 0}
 
 
-__all__ = ["run_gate1_validator", "append_log", "MIN_LAYERS", "DEFAULT_MAX_ATTEMPTS"]
+def check_tool_resolution(manifest: dict, run_dir) -> dict:
+    """Check that crawl4ai resolved correctly in manifest.runtime_profile.
+
+    Returns {"status": "ok"} if resolved or degraded mode.
+    Returns {"status": "warn", "detail": "..."} if crawl4ai_python is missing.
+    """
+    runtime = manifest.get("runtime_profile", {})
+    tools = runtime.get("tools", {})
+    crawl4ai_python = tools.get("crawl4ai_python")
+    collection_mode = manifest.get("collection_mode", "full")
+
+    if not crawl4ai_python and collection_mode != "degraded":
+        detail = "crawl4ai_python not resolved — web collection will fail. Run with --i-understand-degraded to proceed in docs-only mode."
+        append_log(run_dir=run_dir, phase="planning",
+                   action="tool_resolution_check", status="warn", detail=detail)
+        return {"status": "warn", "detail": detail}
+
+    append_log(run_dir=run_dir, phase="planning",
+               action="tool_resolution_check", status="ok",
+               detail=f"crawl4ai_python={crawl4ai_python}, collection_mode={collection_mode}")
+    return {"status": "ok"}
+
+
+def check_collection_warnings(manifest: dict, run_dir) -> list:
+    """Surface post-collection quality warnings from manifest if present.
+
+    Looks for BACKOFF_LOCK, DOMAIN_CONCENTRATION, DEVICE_FALLBACK flags
+    in manifest.collection_warnings list.
+
+    Returns list of warning dicts.
+    """
+    warnings = manifest.get("collection_warnings", [])
+    for w in warnings:
+        append_log(run_dir=run_dir, phase="collection",
+                   action=w.get("type", "warning"), status="warn",
+                   detail=w.get("detail", str(w)))
+    return warnings
+
+
+__all__ = ["run_gate1_validator", "append_log", "MIN_LAYERS", "DEFAULT_MAX_ATTEMPTS",
+           "check_tool_resolution", "check_collection_warnings"]

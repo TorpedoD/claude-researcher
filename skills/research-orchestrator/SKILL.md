@@ -16,6 +16,24 @@ The orchestrator coordinates two subagents (collector and synthesizer), invokes 
 
 ---
 
+## Dependency install policy
+
+The research pipeline must **NEVER** auto-install or auto-download these runtime dependencies:
+- `crawl4ai` (and its Playwright/browser runtime)
+- `playwright` / Playwright browsers
+- `docling`
+
+If any of these are missing when the pipeline needs them, the skill/agent **MUST**:
+1. Detect the missing dependency.
+2. Emit a clear message naming the missing tool and the install command the user can run themselves (e.g., `pipx install crawl4ai`, `pipx install docling`, `playwright install chromium`).
+3. Stop the run — halt the phase with a non-zero exit. Do NOT proceed with a degraded fallback.
+
+Never execute `pip install`, `pipx install`, `npm install`, `playwright install`, `crawl4ai-setup`, `crawl4ai-doctor --install`, or any equivalent install command for these tools from within the pipeline.
+
+**Exception (explicitly allowed):** The Quarto `quarto-ext/mermaid` extension is auto-installed by `scripts/publish.sh` when PDF output is selected. This is the ONLY auto-download permitted in this workflow.
+
+---
+
 ## Quick Start
 
 1. User triggers with `/research "topic or question"`
@@ -37,6 +55,13 @@ The orchestrator coordinates two subagents (collector and synthesizer), invokes 
   - Usage: `python3 ~/.claude/skills/research-orchestrator/scripts/validate_artifact.py <artifact_path> <schema_path>`
   - Returns JSON: `{"status": "pass"|"warn"|"error", "errors": [], "warnings": []}`
   - Used at checkpoint gates to surface validation results as warnings, not hard stops
+
+- `scripts/check_content_rules.py` -- Post-synthesis content-rules scanner (Phase 11 — D-20..D-22)
+  - Usage: `python3 ~/.claude/skills/research-orchestrator/scripts/check_content_rules.py <raw_research_md_path>`
+  - Returns JSON stdout: `{"status": "pass"|"warn"|"error", "violations": [...], "summary": {"total": N, "by_rule": {...}}}`
+  - Exit codes: 0=pass, 1=warn (violations found), 2=error (file missing, path traversal, oversized)
+  - Checks: RULE-02 (URL cited >3x/section), CONS-01 (empty headers), CONS-02 (<2 sentences or >800 words/section), HIER-04 (bare code fences)
+  - Violations are advisory WARNINGS ONLY — never blocks synthesis or Gate 3 (D-21)
 
 ---
 
@@ -75,37 +100,6 @@ def append_log(run_dir, phase, action, status, detail):
             f.write(row + "\n")
 ```
 
-**Log call-site reference table:**
-
-| Phase | Action | Detail template |
-|---|---|---|
-| planning | `run_initialized` | `Run {run_id} created` |
-| planning | `workspace_scanned` | `Found {N} prior runs, {M} local docs` |
-| planning | `task_type_set` | `Type: {new/update/expansion/re-audit}` |
-| planning | `scope_planned` | `{N} subtopics, {M} source types` |
-| gate_1 | `checkpoint_shown` | `Gate 1 displayed` |
-| gate_1 | `checkpoint_response` | `User chose: {Confirm/Adjust/Abort}` |
-| planning | `scope_written` | `scope/scope.md + scope/plan.json + scope/question_tree.json written` |
-| planning | `plan_validated` | `plan.json: {pass/warn/error}` |
-| planning | `question_tree_validated` | `question_tree.json: {ok/warn/error}` (Gate 1 / INV-02) |
-| planning | `question_tree_regenerated` | `attempt {N}` (D-19 auto-regenerate loop, cap=2) |
-| collection | `agent_spawned` | `research-collector dispatched` |
-| collection | `inventory_validated` | `inventory.json: {pass/warn/error}` |
-| gate_2 | `checkpoint_shown` | `Gate 2: {N} sources, {M} quarantined` |
-| gate_2 | `checkpoint_response` | `User chose: {Proceed/Flag/Abort}` |
-| graph | `graphify_detect` | `Detected {N} evidence files` |
-| graph | `semantic_extraction` | `Extracted entities from {N} files ({inline/agent})` |
-| graph | `graphify_build` | `Graph: {N} nodes, {M} edges, {K} communities` |
-| graph | `metrics_extracted` | `Central: {N}, Isolated: {M}, Clusters: {K}` |
-| synthesis | `agent_spawned` | `research-synthesizer dispatched` |
-| synthesis | `claim_index_validated` | `claim_index.json: {pass/warn/error}` |
-| gate_3 | `checkpoint_shown` | `Gate 3: {N} claims, {coverage}% coverage` |
-| gate_3 | `checkpoint_response` | `User chose: {Proceed/Gap-fill/Abort}` |
-| formatting | `format_invoked` | `research-format skill triggered` |
-| formatting | `quarto_rendered` | `output/report.html produced` |
-| gate_4 | `checkpoint_shown` | `Gate 4: run complete, {N} improvements proposed` |
-| gate_4 | `checkpoint_response` | `User chose: {Apply/Skip/Abort}` |
-
 ---
 
 ## Pipeline Phases
@@ -132,11 +126,19 @@ def append_log(run_dir, phase, action, status, detail):
 
    Log: `append_log(run_dir, 'planning', 'run_initialized', 'ok', f'Run {run_id} created')`
 
-4. **Inspect workspace context.** Scan the project workspace for:
+4. **Inspect workspace context (local context — ALWAYS runs).** Local context search MUST scope to the project directory (git repo root or cwd). NEVER search `~/.claude/`, home directory, or any path outside the project. This step ALWAYS runs — on empty result, note "no local artifacts found" and proceed.
+
+   Determine the project root:
+   ```bash
+   PROJECT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+   ```
+
+   Scan `$PROJECT_ROOT` (only) for:
    - Existing `.research/` runs (previous research on related topics)
    - PDF files, markdown documents, or other local sources relevant to the request
    - Any files the user explicitly referenced in their request
-   Record findings for scope planning.
+
+   Record findings for scope planning. If nothing found, record "no local artifacts found" and continue — do NOT skip remaining planning steps.
 
    Log: `append_log(run_dir, 'planning', 'workspace_scanned', 'ok', f'Found {N} prior runs, {M} local docs')`
 
@@ -208,21 +210,123 @@ def append_log(run_dir, phase, action, status, detail):
 
    Gate 3 uses `manifest.environment.tinytex_available` to either suppress PDF/Both options or show them with a `"(requires TinyTeX — not detected)"` caveat suffix so the user retains agency. See Phase 6 / Gate 3 for the caveat handling.
 
-7. **CHECKPOINT GATE 1 (Post-Planning).** Present the proposed scope to the user via AskUserQuestion. Display a summary table with:
-   - Research question
-   - Subtopics with priority ranking
-   - Expected source types
-   - Estimated coverage areas
-   - Budget configuration (max_pages, max_per_domain, max_depth)
-   - Task type
-   - Pre-flight: `tinytex_available` (with advisory warning text if `false`)
+6c. **Gate 1 depth selection (Phase 11 — D-23..D-27).** Before showing the scope review at Gate 1, ask the user to select report depth. This is the **first user interaction at Gate 1** (D-23) — it fires before the TinyTeX advisory is shown in the summary table and before the scope-review AskUserQuestion.
 
-   **User options:**
-   1. **Confirm** -- Proceed to collection with current scope
-   2. **Adjust** -- Modify subtopics, priorities, or budget, then re-display
-   3. **Abort** -- Cancel the run
+   ```python
+   depth_choice = AskUserQuestion(
+       question="Select report depth",
+       options=[
+           {"label": "Full Report - comprehensive (midnight-guide quality bar)", "value": "full"},
+           {"label": "Summary - concise overview", "value": "summary"},
+       ],
+       multiSelect=False,
+   )
+
+   # D-24: write report_depth to manifest.json
+   manifest = json.loads((run_dir / "manifest.json").read_text())
+   manifest["report_depth"] = depth_choice  # "full" or "summary"
+   (run_dir / "manifest.json").write_text(json.dumps(manifest, indent=2))
+   append_log(run_dir, 'gate_1', 'depth_selected', 'ok', f'report_depth={depth_choice}')
+   ```
+
+   After this step, proceed to the existing scope-review step (unchanged). The selected depth is consumed by the synthesizer at spawn time — see `~/.claude/skills/research-synthesize/SKILL.md` → Report Depth section.
+
+   **Resume compatibility note:** If Gate 1 is skipped due to a resumed run, `manifest.report_depth` may be absent. The synthesizer defaults to `"full"` per D-26 — do NOT retroactively write this field on resume.
+
+6d. **Gate 1 per-section depth table (Phase 12 — D-06..D-09).** After Full/Summary selection and before scope-review confirmation, present a per-section depth table.
+
+   **Step A — Auto-assign depths from `scope/question_tree.json`:**
+
+   Walk the tree and assign: L0 node → `high`, L1 → `medium`, L2+ → `low` (D-07). Apply semantic-importance override: any section identified as a core mechanism, key relationship, or foundational concept escalates `low` → `medium` (D-07).
+
+   Build the `auto_entries` list as an array of `{section, depth, justification}` objects.
+
+   **Fallback when `scope/question_tree.json` is absent (Research Risk 2):** default every section to `medium`, justification `"question_tree.json absent — defaulted to medium (D-07 fallback)"`, and log:
+
+   ```python
+   append_log(run_dir, 'gate_1', 'depth_table_fallback', 'warn',
+              'question_tree.json absent — defaulted all sections to medium')
+   ```
+
+   Define any helper functions (tree walker, semantic-importance classifier) inline in the orchestrator context. They read only tree JSON; no user input, no shell execution.
+
+   **Step B — Present depth table and capture overrides:**
+
+   Display as formatted text (use the same UX pattern as other Gate 1 tables):
+
+   ```
+   Per-section depth assignments (Gate 1 — Phase 12):
+
+   | # | Section              | Auto-depth | Justification                              |
+   |---|----------------------|------------|--------------------------------------------|
+   | 1 | Raft Consensus       | high       | L0 question tree node → high depth (D-07)  |
+   | 2 | Edge Network         | medium     | L1 question tree node → medium depth (D-07)|
+   | 3 | Historical Background| low        | L2 question tree node → low depth (D-07)   |
+   ```
+
+   Then AskUserQuestion to either accept all or provide overrides:
+
+   `options = [{"label": "Accept all", "value": "accept"}, {"label": "Override (I'll type changes)", "value": "override"}]`
+
+   If `"override"`, prompt with a follow-up freeform question. Parse responses with a STRICT regex: `^\s*(\d+)\s*=\s*(low|medium|high)\s*(?:,\s*(\d+)\s*=\s*(low|medium|high)\s*)*$` (row number = depth, comma-separated). Reject malformed input and re-prompt. Allowed depth values: `low`, `medium`, `high` (enum-constrained by plan.schema.json Plan 02).
+
+   **Step C — Write `section_depths[]` and `depth_overrides[]` to plan.json:**
+
+   - Apply user overrides to the `auto_entries` in place; record each change in a parallel `overrides` list as `{section, original_depth, override_depth, override_reason: "User override at Gate 1"}`.
+   - Read `scope/plan.json`, set `plan["section_depths"] = final_entries`, and if `overrides` is non-empty, set `plan["depth_overrides"] = overrides`.
+   - Write plan.json back with `json.dumps(plan, indent=2)`.
+   - Log: `append_log(run_dir, 'gate_1', 'section_depths_written', 'ok', f'{len(final_entries)} sections, {len(overrides)} overrides')`
+
+   **Step D — Re-validate plan.json after write:**
+
+   Run `python3 ~/.claude/skills/research-orchestrator/scripts/validate_artifact.py "$run_dir/scope/plan.json" ~/.claude/skills/research-orchestrator/references/plan.schema.json`. A schema validation failure here is a HARD error — abort Gate 1 and report to the user. (Requires Plan 02 Task 2 patched plan.schema.json.)
+
+   **Resume compatibility:** If Gate 1 is skipped via `--resume`, `plan.section_depths` may be absent. The synthesizer defaults each section to `medium` per its fallback (Plan 03 Task 2).
+
+7. **CHECKPOINT GATE 1 (Post-Planning).** Present the proposed scope to the user. Tables MUST be printed to chat via normal output BEFORE AskUserQuestion. Do NOT embed tables inside the AskUserQuestion question/header/options. Never ask two questions at Gate 1 — one combined confirm/adjust/abort only.
+
+   **Step A — Print tables to chat (normal output, NOT inside AskUserQuestion):**
+
+   Print the following as plain markdown tables in regular chat output:
+
+   | Field | Value |
+   |-------|-------|
+   | Research question | {user_request} |
+   | Task type | {task_type} |
+   | Subtopics | {count} (see table below) |
+   | Source types | {comma-separated list} |
+   | Coverage areas | {comma-separated list} |
+   | Budget | max_pages={N}, max_per_domain={N}, max_depth={N} |
+   | TinyTeX | {available / not detected — see advisory above if false} |
+
+   | # | Subtopic | Priority |
+   |---|----------|----------|
+   | 1 | {name}   | {high/medium/low} |
+   | … | …        | … |
+
+   (If `tinytex_available` is `false`, also print the advisory warning text here before the tables.)
+
+   **Step B — ONE combined AskUserQuestion call:**
+
+   ```python
+   scope_choice = AskUserQuestion(
+       question="Review the scope above. How would you like to proceed?",
+       options=[
+           {"label": "Confirm — proceed to collection with current scope", "value": "confirm"},
+           {"label": "Adjust — modify subtopics, priorities, or budget", "value": "adjust"},
+           {"label": "Abort — cancel this run", "value": "abort"},
+       ],
+       multiSelect=False,
+   )
+   ```
+
+   This is the ONLY AskUserQuestion call for scope confirmation at Gate 1. Do NOT follow it with a second "any adjustments?" question. If user selects "adjust", process changes and re-print tables + re-ask this same single question.
 
    See `references/checkpoint_protocol.md` Gate 1 for full specification.
+
+   **Tool resolution check**: After init_run.py runs, verify `manifest.collection_mode`.
+   If `degraded`, surface a prominent warning: "⚠️ Web collection disabled — crawl4ai not resolved. Running docs-only."
+   If `full`, confirm `manifest.runtime_profile.tools.crawl4ai_python` is non-null.
 
    Log: `append_log(run_dir, 'gate_1', 'checkpoint_shown', 'ok', 'Gate 1 displayed')`
    Log (after user responds): `append_log(run_dir, 'gate_1', 'checkpoint_response', 'ok', f'User chose: {choice}')`
@@ -282,9 +386,11 @@ def append_log(run_dir, phase, action, status, detail):
    Agent(
      prompt="Collect evidence for the research run at <run_dir_path>.
        Read scope/scope.md and scope/plan.json from the run directory for collection targets.
-       Use crwl CLI for web crawling and docling CLI for document parsing.
+       Use scripts/parallel_crawl.py (Crawl4AI arun_many + MemoryAdaptiveDispatcher) for concurrent web crawling
+       and `xargs -P <docling_parallelism> docling` for parallel document parsing.
        Write outputs to <run_dir_path>/collect/.
        Budget: max_pages=<N>, max_per_domain=<N>, max_depth=<N>.
+       Use `manifest.runtime_profile.resolved.max_concurrent` and `manifest.runtime_profile.resolved.per_domain_cap` for crawl concurrency knobs, `manifest.runtime_profile.resolved.docling_parallelism` for `xargs -P`, and `manifest.runtime_profile.resolved.docling_device` / `docling_threads` for Docling flags.
        Follow the research-collect skill instructions for all collection procedures.",
      subagent_type="research-collector",
      model="sonnet",
@@ -323,6 +429,12 @@ def append_log(run_dir, phase, action, status, detail):
 
    See `references/checkpoint_protocol.md` Gate 2 for full specification.
 
+   **Collection quality warnings**: Check `manifest.collection_warnings` for:
+   - `BACKOFF_LOCK`: concurrency was frozen due to excessive rate-limit backoff
+   - `DOMAIN_CONCENTRATION`: one domain dominated coverage (top-1 share > 40%)
+   - `DEVICE_FALLBACK`: Docling fell back from MPS/CUDA to CPU for >10% of docs
+   Surface any present as warnings before proceeding to synthesis.
+
    Log: `append_log(run_dir, 'gate_2', 'checkpoint_shown', 'ok', f'Gate 2: {N} sources, {M} quarantined')`
    Log (after user responds): `append_log(run_dir, 'gate_2', 'checkpoint_response', 'ok', f'User chose: {choice}')`
 
@@ -350,8 +462,12 @@ def append_log(run_dir, phase, action, status, detail):
 
    **Step 2a: Discover pipx interpreter.**
    ```bash
-   GRAPHIFY_BIN=$(which graphify 2>/dev/null)
-   PYTHON=$(head -1 "$GRAPHIFY_BIN" | tr -d '#!')
+   GRAPHIFY_VENV=$(pipx environment --value PIPX_LOCAL_VENVS 2>/dev/null)/graphify
+   PYTHON="$GRAPHIFY_VENV/bin/python3"
+   # Fallback: import-based discovery if pipx environment is unavailable
+   if [ ! -x "$PYTHON" ]; then
+       PYTHON=$(python3 -c "import graphify; import sys; print(sys.executable)" 2>/dev/null)
+   fi
    ```
 
    **Step 2b: Detect files in evidence directory.**
@@ -417,89 +533,18 @@ def append_log(run_dir, phase, action, status, detail):
 
    **Step 2d: Build, cluster, analyze, export HTML, and post-process.**
    ```bash
-   $PYTHON -c "
-   from graphify.build import build_from_json
-   from graphify.cluster import cluster, score_all
-   from graphify.analyze import god_nodes
-   from graphify.export import to_json, to_html
-   from graphify.report import generate
-   import json, networkx as nx
+   $PYTHON ~/.claude/skills/research-orchestrator/scripts/build_graph.py --run-dir "$run_dir"
+   ```
+   Writes `collect/graphify-out/{graph.json,graph.html,central_nodes.json,isolated_nodes.json,cluster_map.json,GRAPH_REPORT.md}`; prints `EMPTY_CORPUS_GUARD:` on stdout when 0 nodes/edges.
+
+   After the subprocess returns, check for the empty-corpus guard output and log from orchestrator context:
+   ```python
+   import json
    from pathlib import Path
-
-   extraction = json.loads(Path('<run_dir>/.graphify_extract.json').read_text())
-   detection = json.loads(Path('<run_dir>/.graphify_detect.json').read_text())
-
-   G = build_from_json(extraction)
-   communities = cluster(G)
-   gods = god_nodes(G)
-
-   # Write standard graph output
-   out = Path('<run_dir>/collect/graphify-out')
-   out.mkdir(parents=True, exist_ok=True)
-   to_json(G, communities, str(out / 'graph.json'))
-
-   # Generate HTML visualization (GRAPH-02)
-   to_html(G, communities, str(out / 'graph.html'))
-
-   # Post-process: central_nodes (GRAPH-02, GRAPH-03)
-   central = [{'id': g['id'], 'label': g['label'], 'degree': g['edges'],
-               'betweenness': nx.betweenness_centrality(G).get(g['id'], 0.0)}
-              for g in gods]
-   (out / 'central_nodes.json').write_text(json.dumps(central, indent=2))
-
-   # Post-process: isolated_nodes (GRAPH-02, GRAPH-04)
-   isolated = [{'id': n, 'label': G.nodes[n].get('label', n), 'degree': d}
-               for n, d in G.degree() if d <= 1]
-   (out / 'isolated_nodes.json').write_text(json.dumps(isolated, indent=2))
-
-   # Post-process: cluster_map (GRAPH-02, GRAPH-05)
-   cmap = {str(k): v for k, v in communities.items()}
-   (out / 'cluster_map.json').write_text(json.dumps(cmap, indent=2))
-
-   # Inject fields into graph.json per contract (graph.json.contract.md)
-   # graphify to_json() uses networkx native keys: 'links' and no 'communities' array
-   # Normalize to contract-required keys before writing
-   graph_data = json.loads((out / 'graph.json').read_text())
-
-   # Empty corpus guard (GRAPH-02 / D-01, D-02):
-   # If graphify produced 0 nodes or 0 edges, write stub JSONs (empty arrays /
-   # empty object), append a warning row to run_log.md, and skip the normal
-   # rename/injection path. Prevents silent downstream synthesis failures.
-   if len(graph_data.get('nodes', [])) == 0 or len(graph_data.get('links', [])) == 0:
-       empty = {'nodes': [], 'edges': [], 'communities': []}
-       (out / 'graph.json').write_text(json.dumps(empty, indent=2))
-       (out / 'central_nodes.json').write_text(json.dumps([], indent=2))
-       (out / 'isolated_nodes.json').write_text(json.dumps([], indent=2))
-       (out / 'cluster_map.json').write_text(json.dumps({}, indent=2))
+   graph_data = json.loads((Path('<run_dir>/collect/graphify-out') / 'graph.json').read_text())
+   if not graph_data.get('nodes'):
        append_log(run_dir, 'graph', 'empty_corpus_guard', 'warn',
                   'Graph has 0 edges — stub files written, synthesis will fall back to alphabetical ordering')
-   else:
-       # Normal path: rename links → edges and inject communities[]
-       graph_data['edges'] = graph_data.pop('links')
-       graph_data['communities'] = [{'id': int(k), 'members': v}  # inject communities array
-                                     for k, v in cmap.items()]
-       graph_data['central_nodes'] = central
-       graph_data['isolated_nodes'] = isolated
-       graph_data['cluster_map'] = cmap
-       (out / 'graph.json').write_text(json.dumps(graph_data, indent=2))
-
-   # Label communities (orchestrator LLM labels each community with 2-5 word name)
-   # Placeholder: use 'Community N' labels; orchestrator refines after reading GRAPH_REPORT
-   labels = {cid: f'Community {cid}' for cid in communities}
-
-   # Generate GRAPH_REPORT.md
-   cohesion = score_all(G, communities)
-   report = generate(G, communities, cohesion, labels, gods, [], detection,
-                     {'input': 0, 'output': 0}, str(Path('<run_dir>/collect/evidence')))
-   (out / 'GRAPH_REPORT.md').write_text(report)
-
-   # Cleanup intermediate files
-   Path('<run_dir>/.graphify_detect.json').unlink(missing_ok=True)
-   Path('<run_dir>/.graphify_extract.json').unlink(missing_ok=True)
-
-   print(f'Graph: {len(G.nodes)} nodes, {len(G.edges)} edges, {len(communities)} communities')
-   print(f'Central: {len(central)} nodes, Isolated: {len(isolated)} nodes')
-   "
    ```
 
    Log: `append_log(run_dir, 'graph', 'graphify_build', 'ok', f'Graph: {N} nodes, {M} edges, {K} communities')`
@@ -551,7 +596,7 @@ def append_log(run_dir, phase, action, status, detail):
        Write outputs to <run_dir_path>/synthesis/.
        Follow the research-synthesize skill instructions for all synthesis procedures.",
      subagent_type="research-synthesizer",
-     model="opus",
+     model="sonnet",
      description="Synthesize research for: <user_request summary>"
    )
    ```
@@ -572,6 +617,31 @@ def append_log(run_dir, phase, action, status, detail):
    ```
 
    Log: `append_log(run_dir, 'synthesis', 'claim_index_validated', 'ok', f'claim_index.json: {validation_status}')`
+
+4b. **Post-synthesis content-rules check (Phase 11 — D-20..D-22).** After the synthesizer writes `synthesis/raw_research.md`, run the lightweight content-rules scanner to detect RULE-02 (URL cited >3x per section), CONS-01 (empty section headers), CONS-02 (<2 sentences or >800 words per section), and HIER-04 (bare code fences). Violations are **WARNINGS ONLY** — they do NOT block synthesis or Gate 3 (D-21). See `~/.claude/skills/research-orchestrator/references/content_rules.md` for the rule contract.
+
+   ```python
+   import subprocess, json
+   script = Path.home() / ".claude/skills/research-orchestrator/scripts/check_content_rules.py"
+   target = run_dir / "synthesis/raw_research.md"
+   result = subprocess.run(["python3", str(script), str(target)], capture_output=True, text=True)
+   try:
+       payload = json.loads(result.stdout)
+   except json.JSONDecodeError:
+       payload = {"status": "error", "violations": [], "summary": {"total": 0}, "detail": result.stderr[:500]}
+   status = payload.get("status", "error")          # 'pass' | 'warn' | 'error'
+   violations = payload.get("violations", [])
+   total = payload.get("summary", {}).get("total", len(violations))
+   log_status = 'ok' if status == 'pass' else 'warn'  # D-21: warnings never escalate to 'fail'
+   detail = f"violations={total} status={status} rules=" + ",".join(sorted({v.get('rule','?') for v in violations}))
+   append_log(run_dir, 'synthesis', 'content_rules_check', log_status, detail)
+   # Store for Gate 3 presentation — do NOT block, do NOT raise, do NOT exit the orchestrator on violations.
+   content_rules_summary = {"status": status, "total": total, "violations": violations}
+   ```
+
+   **Scanner error handling:** If the scanner exits 2 (error — file missing, path traversal, oversized), log with `status='warn'` (not `'fail'`), record detail, and proceed. Missing `raw_research.md` is itself a more serious pipeline error handled by the existing synthesis-output validation; this scanner is best-effort advisory.
+
+   **Non-goal (QA-04, Phase 16):** QA-04 will later BLOCK Gate 3 on certain error-severity issues. Phase 11 is warn-only. Do NOT add blocking logic here.
 
 ---
 
@@ -609,38 +679,78 @@ def append_log(run_dir, phase, action, status, detail):
    - Average sources per claim
    - Citation audit pass/fail summary
    - Validation warnings from validate_artifact.py
+   - **Content-rules violations: {total} ({status}). Rules: {comma-separated rule codes}. Advisory only — see logs/run_log.md for full detail.** (from `content_rules_summary` computed in Phase 4 Step 4b; D-21: Gate 3 approval is NOT blocked by any violation count)
 
    **Part A — User options:**
    1. **Proceed to format** -- Continue to formatting and publishing (triggers Part B)
    2. **Request gap-fill** — Defer to the synthesizer's gap-fill loop (see research-synthesize SKILL.md § Step: Gap-Fill Loop (SYNTH-11)). The synthesizer re-invokes collection internally against gap_analysis.md targets, capped at 20 additional pages and max 1 iteration.
    3. **Abort** -- Cancel the run
 
-   **Part B — Format preferences (only if user chose "Proceed to format" in Part A).** Ask all four parameters via AskUserQuestion (each multiSelect single-choice). This reuses the existing AskUserQuestion pattern — **no freeform input**. User responses come from a controlled enum, so the downstream research-format trigger phrase is safe to construct from these values (see Phase 6 security note).
+   **Part B — Format preferences (only if user chose "Proceed to format" in Part A).** Ask three parameters in sequence via AskUserQuestion (each multiSelect single-choice, no freeform input). User responses come from a controlled enum, so the downstream research-format trigger phrase is safe to construct from these values (see Phase 6 security note). Output mode defaults to "Full Report" — it is not asked.
 
-   - **Output mode:** Full Report / Summary / Documentation
-   - **Audience:** External / Personal
-   - **Tone:** Professional / Teachy
-   - **Quarto output:** None (markdown only) / HTML / PDF / Both HTML+PDF
+   **Question 1 — Audience:**
+   ```python
+   audience_choice = AskUserQuestion(
+       question="Who is the primary audience for this research?",
+       options=[
+           {"label": "External — written for readers outside your organization", "value": "external"},
+           {"label": "Internal — written for your team or personal use", "value": "internal"},
+       ],
+       multiSelect=False,
+   )
+   ```
 
-   **TinyTeX caveat handling.** If `manifest.environment.tinytex_available == false` (recorded at Gate 1 pre-flight), annotate PDF and Both options with the suffix `"(requires TinyTeX — not detected)"` rather than suppressing them — the user retains agency; the Phase 6 graceful render fallback (D-09) handles any render failure cleanly. Example option labels:
-   - `"PDF (requires TinyTeX — not detected)"`
-   - `"Both HTML+PDF (requires TinyTeX — not detected)"`
+   **Question 2 — Tone:**
+   ```python
+   tone_choice = AskUserQuestion(
+       question="What tone should the research use?",
+       options=[
+           {"label": "Professional — formal, polished, suitable for publication", "value": "professional"},
+           {"label": "Casual — conversational, accessible, lower formality", "value": "casual"},
+           {"label": "Technical — dense, specification-level, assumes domain expertise", "value": "technical"},
+       ],
+       multiSelect=False,
+   )
+   ```
+
+   **Question 3 — Output format:**
+
+   Build options based on `manifest.environment.tinytex_available`. If `false`, annotate PDF-inclusive options with `"(requires TinyTeX — not detected)"` rather than suppressing them — the user retains agency; Phase 6 graceful render fallback (D-09) handles any render failure.
+
+   ```python
+   tinytex_ok = manifest.get("environment", {}).get("tinytex_available", True)
+   pdf_suffix = "" if tinytex_ok else " (requires TinyTeX — not detected)"
+   format_choice = AskUserQuestion(
+       question="What output format do you want?",
+       options=[
+           {"label": f"Markdown + PDF — polished report with PDF rendering{pdf_suffix}", "value": "markdown+pdf"},
+           {"label": "HTML — web-optimized interactive output", "value": "html"},
+           {"label": "Markdown only — plain .md, no rendering", "value": "markdown-only"},
+       ],
+       multiSelect=False,
+   )
+   ```
+
+   Map `format_choice` to `quarto_output`:
+   - `"markdown+pdf"` → `quarto_output = "both"` (markdown report.md + PDF via Quarto)
+   - `"html"` → `quarto_output = "html"`
+   - `"markdown-only"` → `quarto_output = "none"`
 
    **Write responses to manifest.json under `format_preferences`:**
    ```json
    {
      "format_preferences": {
        "mode": "Full Report",
-       "audience": "External",
-       "tone": "Professional",
-       "quarto_output": "html"
+       "audience": "external",
+       "tone": "professional",
+       "quarto_output": "both"
      }
    }
    ```
 
-   Normalize `quarto_output` to lowercase: `"none"`, `"html"`, `"pdf"`, `"both"`.
+   Normalize all values to lowercase. `mode` is always written as `"Full Report"` (not asked).
 
-   **Defaults if Gate 3 is skipped or the user bypasses (D-05):** `mode=Full Report`, `audience=External`, `tone=Professional`, `quarto_output=html`. The orchestrator writes these defaults to `manifest.format_preferences` before Phase 6 begins if the field is absent.
+   **Defaults if Gate 3 is skipped or the user bypasses (D-05):** `mode=Full Report`, `audience=external`, `tone=professional`, `quarto_output=html`. The orchestrator writes these defaults to `manifest.format_preferences` before Phase 6 begins if the field is absent.
 
    See `references/checkpoint_protocol.md` Gate 3 for full specification.
 
@@ -713,42 +823,18 @@ def append_log(run_dir, phase, action, status, detail):
 
    Log: `append_log(run_dir, 'formatting', 'format_invoked', 'ok', f'research-format skill triggered (mode={mode}, audience={audience}, tone={tone}, quarto_output={quarto_output})')`
 
-4. **Render with Quarto (conditional, graceful fallback — D-04, D-09).** Gate both `.qmd` production and `quarto render` on `produce_qmd`. Wrap every `quarto render` call to capture exit code — a render failure is **logged** and recorded in `manifest.phase_status.formatting.render_failed`, but the formatting phase is **still marked complete**. `report.md` is the primary output; HTML/PDF are supplementary.
-
-   **Anti-patterns (do NOT):**
-   - Do NOT hard-code `--to html` — always branch on `quarto_output` (html / pdf / both).
-   - Do NOT run `quarto render` before `.qmd` exists — gate on `produce_qmd`.
-   - Do NOT propagate a render failure as a phase failure — graceful fallback only.
-   - Do NOT pass `-shell-escape` to `quarto render` — defaults-safe is required (LaTeX `\write18` enables arbitrary code execution).
-
+3b–4. **Install Mermaid extension, copy quarto-pdf-base.yml, and render (Phase 12 — D-04, D-09, D-21, D-22, D-25, D-27).** Run the publish script, which handles all three steps in sequence. Render failures are logged and recorded as `render_failed` but do NOT fail the phase. Never pass `-shell-escape` to `quarto render`.
    ```bash
-   # Skip entirely when user chose markdown-only (quarto_output=none)
-   render_failed=false
-   if [ "$produce_qmd" = "true" ]; then
-     if [ "$quarto_output" = "html" ] || [ "$quarto_output" = "both" ]; then
-       if ! quarto render "$run_dir/output/report.qmd" --to html >> "$run_dir/logs/run_log.md" 2>&1; then
-         render_failed=true
-         echo "$(date -Iseconds) formatting quarto_render_html failed rc=$?" >> "$run_dir/logs/run_log.md"
-       fi
-     fi
-     if [ "$quarto_output" = "pdf" ] || [ "$quarto_output" = "both" ]; then
-       if ! quarto render "$run_dir/output/report.qmd" --to pdf >> "$run_dir/logs/run_log.md" 2>&1; then
-         render_failed=true
-         echo "$(date -Iseconds) formatting quarto_render_pdf failed rc=$?" >> "$run_dir/logs/run_log.md"
-       fi
-     fi
-   fi
-   # Record render_failed nested under phase_status.formatting (per RESEARCH §Open Questions)
-   # manifest.phase_status.formatting.render_failed = $render_failed
-   # formatting is ALWAYS marked complete, regardless of render_failed (D-09)
+   bash ~/.claude/skills/research-orchestrator/scripts/publish.sh \
+     --run-dir "$run_dir" --quarto-output "$quarto_output" --produce-qmd "$produce_qmd"
    ```
+   Emits `MERMAID_INSTALL_STATUS=<ok|warn|skip>`, `QUARTO_YML_STATUS=<ok|warn|exists|skip>`, `RENDER_FAILED=<true|false>` on stdout. Parse these and log with `append_log`.
 
-   Python equivalent for recording `render_failed` in manifest:
+   After the script returns, record `render_failed` in manifest and log:
    ```python
    m = json.loads(Path(manifest_path).read_text())
    m.setdefault("phase_status", {}).setdefault("formatting", {})
    if isinstance(m["phase_status"]["formatting"], str):
-       # Upgrade legacy string status to dict
        m["phase_status"]["formatting"] = {"status": m["phase_status"]["formatting"]}
    m["phase_status"]["formatting"]["render_failed"] = render_failed
    Path(manifest_path).write_text(json.dumps(m, indent=2))
@@ -822,10 +908,6 @@ If a collector or synthesizer subagent fails:
 3. On resume, the subagent can pick up from partial outputs rather than starting from scratch
 
 ---
-
-## Checkpoint Persistence
-
-Each gate's data is saved to `<run_dir>/checkpoints/gate_{N}_data.json` before presenting to the user. If the session interrupts during a checkpoint, the checkpoint data is available for resume without re-computation.
 
 ---
 

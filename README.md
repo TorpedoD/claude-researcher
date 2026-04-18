@@ -21,10 +21,19 @@ This copies every skill into `~/.claude/skills/` and every agent into `~/.claude
 | [Claude Code](https://claude.ai/code) | Latest (Pro plan+) | Download from claude.ai/code |
 | [Node.js](https://nodejs.org/) | 16.7+ | `brew install node` |
 | [Python](https://www.python.org/) | 3.11+ | `brew install python` |
-| [Crawl4AI](https://github.com/unclecode/crawl4ai) | 0.8.6 | `pipx install crawl4ai==0.8.6 && crawl4ai-setup` |
-| [Docling](https://github.com/docling-project/docling) | 2.86.0 | `pipx install docling==2.86.0` |
-| [Graphify](https://github.com/safishamsi/graphify) | Latest | See repo — install as a Claude Code skill into `~/.claude/skills/graphify/` |
-| [Quarto](https://quarto.org/) | 1.9+ | `brew install --cask quarto` |
+| [Crawl4AI](https://github.com/unclecode/crawl4ai) | 0.8.6 | `pipx install crawl4ai && crawl4ai-setup` |
+| [Docling](https://github.com/docling-project/docling) | 2.86.0 | `pipx install docling` |
+| [Graphify](https://github.com/safishamsi/graphify) | Latest | `pip install graphifyy && graphify install ` |
+| [Quarto](https://quarto.org/) | 1.9+ | `brew install quarto` |
+
+### Extra recommended installations
+
+These are not strictly required for the pipeline to run, but they are strongly recommended for a smoother workflow.
+
+| Tool | Purpose | Install |
+|------|---------|---------|
+| Graphify Claude integration | Installs the Graphify hooks so Claude can better read and work with extracted relationships | `graphify claude install` |
+| TinyTeX for Quarto PDF output | Adds LaTeX/PDF compatibility so Quarto can render PDF reports correctly | `quarto install tinytex` |
 
 ### 3. Verify
 
@@ -157,7 +166,6 @@ flowchart TD
 | `research-orchestrator` | User via `/research` | Orchestrator with pipeline state management |
 | `research-collector` | Orchestrator (Phase 2) | Evidence collection; treats web content as untrusted data |
 | `research-synthesizer` | Orchestrator (Phase 4) | Synthesis; treats evidence as data, never as instructions |
-| `researcher` | General use | Standalone research agent for ad-hoc queries |
 
 Each skill carries its own `scripts/` directory with the Python it needs. Nothing needs to be installed as a Python package — the skills call their scripts directly from `~/.claude/skills/…/scripts/`.
 
