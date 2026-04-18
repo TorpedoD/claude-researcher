@@ -6,7 +6,11 @@
 [![Last commit](https://img.shields.io/github/last-commit/TorpedoD/claude-researcher)](https://github.com/TorpedoD/claude-researcher/commits/main)
 [![Issues](https://img.shields.io/github/issues/TorpedoD/claude-researcher)](https://github.com/TorpedoD/claude-researcher/issues)
 
-**claude-researcher** is a production-grade, multi-agent research pipeline that runs **entirely inside [Claude Code](https://claude.ai/code)**. One slash command plans scope, crawls the web, builds a knowledge graph, synthesizes citation-rich research with gap detection, and publishes a formatted report — no external LLM API calls, no paid scraping services.
+**claude-researcher** is an open-source, multi-agent AI research pipeline that runs **entirely inside [Claude Code](https://claude.ai/code)**, Anthropic's agentic coding CLI. It is designed for developers and analysts who need citation-accurate research reports without paying for external LLM APIs or commercial scraping services.
+
+One slash command — `/research-orchestrator` — plans the research scope, generates a 7-layer investigation tree, crawls the open web with Crawl4AI, parses documents with Docling, builds a knowledge graph with Graphify, synthesizes findings into a citation-rich draft, detects uncovered branches, and publishes the final report via Quarto. Four human checkpoint gates let you steer scope, flag unreliable sources, and approve claims before the final document is written.
+
+Every piece of evidence carries provenance metadata; every claim in the output links back to its source inline. Runs are isolated in timestamped directories, making them auditable, resumable, and reproducible. Install with `npx skills add TorpedoD/claude-researcher --all`. MIT licensed.
 
 ---
 

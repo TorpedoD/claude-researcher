@@ -1,0 +1,24 @@
+# claude-researcher
+
+> A production-grade, multi-agent AI research pipeline that runs entirely inside Claude Code. One slash command plans scope, crawls the web, builds a knowledge graph, synthesizes citation-rich research with gap detection, and publishes a formatted report — no external LLM API calls, no paid scraping services.
+
+## Core documentation
+
+- [README](https://github.com/TorpedoD/claude-researcher/blob/main/README.md): Full installation, usage, architecture, and safety model
+- [Installation](https://github.com/TorpedoD/claude-researcher#installation): npx installer + system dependencies (Node 16.7+, Python 3.11+, Crawl4AI, Docling, Graphify, Quarto)
+- [Usage](https://github.com/TorpedoD/claude-researcher#usage): Slash commands, resume, and budget configuration
+- [Architecture](https://github.com/TorpedoD/claude-researcher#architecture): 6-phase pipeline with 4 human checkpoint gates
+- [Run Artifacts](https://github.com/TorpedoD/claude-researcher#run-artifacts): Directory layout and manifest schema
+
+## Key facts
+
+- Runs entirely inside Claude Code — no external LLM API calls, no paid scraping services
+- 6-phase pipeline: Planning → Collection → Knowledge Graph → Synthesis → Gap Detection → Format/Publish
+- 4 human checkpoint gates (scope, sources, claims, output) with interrupt + resume
+- Provenance-first: every claim in the final report links back to its source via inline citation
+- Built on open-source tools: Crawl4AI (crawl), Docling (parse), Graphify (graph), Quarto (render)
+- Install: `npx skills add TorpedoD/claude-researcher --all`
+- Resume interrupted runs: `/research-resume`
+- License: MIT
+- Author: TorpedoD (https://github.com/TorpedoD)
+- Repository: https://github.com/TorpedoD/claude-researcher
