@@ -3,10 +3,10 @@
 // Zero-dep Node CLI. Copies skills + agents from this package into ~/.claude/.
 //
 // Usage:
-//   npx github:TorpedoD/research-pipeline add           # install everything
-//   npx github:TorpedoD/research-pipeline add <name>    # install one skill or agent
-//   npx github:TorpedoD/research-pipeline list          # list available + installed
-//   npx github:TorpedoD/research-pipeline remove <name> # remove a skill or agent
+//   npx github:TorpedoD/claude-researcher add           # install everything
+//   npx github:TorpedoD/claude-researcher add <name>    # install one skill or agent
+//   npx github:TorpedoD/claude-researcher list          # list available + installed
+//   npx github:TorpedoD/claude-researcher remove <name> # remove a skill or agent
 //
 // Flags:
 //   --force / -f   overwrite existing without backup
@@ -228,14 +228,14 @@ function cmdRemove() {
 }
 
 function cmdHelp() {
-  console.log(`${bold("research-pipeline")} — Claude Code skills + agents installer
-${dim("repo: https://github.com/TorpedoD/research-pipeline")}
+  console.log(`${bold("claude-researcher")} — Claude Code skills + agents installer
+${dim("repo: https://github.com/TorpedoD/claude-researcher")}
 
 ${bold("Usage")}
-  npx github:TorpedoD/research-pipeline ${cyan("add")}              install all skills + agents
-  npx github:TorpedoD/research-pipeline ${cyan("add <name>")}       install one
-  npx github:TorpedoD/research-pipeline ${cyan("list")}             show available / installed
-  npx github:TorpedoD/research-pipeline ${cyan("remove <name>")}    uninstall one
+  npx github:TorpedoD/claude-researcher ${cyan("add")}              install all skills + agents
+  npx github:TorpedoD/claude-researcher ${cyan("add <name>")}       install one
+  npx github:TorpedoD/claude-researcher ${cyan("list")}             show available / installed
+  npx github:TorpedoD/claude-researcher ${cyan("remove <name>")}    uninstall one
 
 ${bold("Flags")}
   --force, -f     overwrite existing (still backs up to .bak unless --no-backup)
@@ -248,10 +248,10 @@ ${bold("Environment")}
   NO_COLOR        disable ANSI colors
 
 ${bold("Examples")}
-  npx github:TorpedoD/research-pipeline add
-  npx github:TorpedoD/research-pipeline add research-orchestrator
-  npx github:TorpedoD/research-pipeline list
-  CLAUDE_HOME=/tmp/claude-test npx github:TorpedoD/research-pipeline add --dry-run
+  npx github:TorpedoD/claude-researcher add
+  npx github:TorpedoD/claude-researcher add research-orchestrator
+  npx github:TorpedoD/claude-researcher list
+  CLAUDE_HOME=/tmp/claude-test npx github:TorpedoD/claude-researcher add --dry-run
 `);
 }
 

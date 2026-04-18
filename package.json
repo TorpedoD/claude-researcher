@@ -1,10 +1,10 @@
 {
-  "name": "research-pipeline",
+  "name": "claude-researcher",
   "version": "0.1.0",
-  "description": "Claude Code research pipeline — skills + agents installer (run via npx, no publish required)",
+  "description": "Multi-agent research pipeline for Claude Code — web crawl, knowledge graph, synthesis, and citation-rich reports via slash commands. Skills + agents installer, run via npx, no publish required.",
   "type": "module",
   "bin": {
-    "research-pipeline": "./bin/cli.mjs"
+    "claude-researcher": "./bin/cli.mjs"
   },
   "files": [
     "bin",
@@ -18,15 +18,22 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/TorpedoD/research-pipeline.git"
+    "url": "git+https://github.com/TorpedoD/claude-researcher.git"
   },
-  "homepage": "https://github.com/TorpedoD/research-pipeline",
+  "homepage": "https://github.com/TorpedoD/claude-researcher",
   "bugs": {
-    "url": "https://github.com/TorpedoD/research-pipeline/issues"
+    "url": "https://github.com/TorpedoD/claude-researcher/issues"
   },
   "keywords": [
     "claude-code",
     "claude",
+    "anthropic",
+    "ai-research",
+    "multi-agent",
+    "research-pipeline",
+    "knowledge-graph",
+    "llm",
+    "web-crawler",
     "skills",
     "agents",
     "research",

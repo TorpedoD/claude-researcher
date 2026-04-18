@@ -1,6 +1,10 @@
-# Research Pipeline for Claude Code
+# claude-researcher — AI Research Pipeline for Claude Code
 
-A production-grade, multi-agent research pipeline that runs **entirely inside Claude Code**. Type a single slash command, and it plans scope, crawls the web, builds a knowledge graph, synthesizes citation-rich research with gap detection, and publishes a formatted report.
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Node](https://img.shields.io/badge/node-%3E%3D16.7-brightgreen.svg)](https://nodejs.org/)
+[![Built for Claude Code](https://img.shields.io/badge/built%20for-Claude%20Code-8A2BE2.svg)](https://claude.ai/code)
+
+**claude-researcher** is a production-grade, multi-agent research pipeline that runs **entirely inside [Claude Code](https://claude.ai/code)**. One slash command plans scope, crawls the web, builds a knowledge graph, synthesizes citation-rich research with gap detection, and publishes a formatted report — no external LLM API calls, no paid scraping services.
 
 ---
 
@@ -9,7 +13,7 @@ A production-grade, multi-agent research pipeline that runs **entirely inside Cl
 ### 1. Install the pipeline
 
 ```bash
-npx skills add TorpedoD/research-pipeline --all
+npx skills add TorpedoD/claude-researcher --all
 ```
 
 This copies every skill into `~/.claude/skills/` and every agent into `~/.claude/agents/`. No clone required.
@@ -206,6 +210,16 @@ The `manifest.json` tracks per-phase status (`pending`, `in_progress`, `complete
 ## Safety
 
 The collector and synthesizer agents are explicitly instructed to treat all scraped web content and evidence files as **untrusted data** — never as instructions or system prompts. Quarantine classification runs on all collected content before it reaches synthesis.
+
+---
+
+## Built on
+
+- **[Claude Code](https://claude.ai/code)** — Anthropic's agentic coding harness; this pipeline runs as native skills + agents inside it
+- **[Crawl4AI](https://github.com/unclecode/crawl4ai)** — async web crawler used by the collector phase
+- **[Docling](https://github.com/docling-project/docling)** — document parsing with MPS acceleration on macOS
+- **[Graphify](https://github.com/safishamsi/graphify)** — knowledge graph extraction over collected evidence
+- **[Quarto](https://quarto.org/)** — final report rendering (HTML / PDF via TinyTeX)
 
 ---
 
