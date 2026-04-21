@@ -19,7 +19,7 @@ Every piece of evidence carries provenance metadata; every claim in the output l
 ### 1. Install the pipeline
 
 ```bash
-npx skills add TorpedoD/claude-researcher --all
+npx github:TorpedoD/claude-researcher add
 ```
 
 This copies every skill into `~/.claude/skills/` and every agent into `~/.claude/agents/`. No clone required.
