@@ -148,15 +148,15 @@ def detect_memory(plat: str) -> int:
 # MPS / CUDA
 # ---------------------------------------------------------------------------
 
-def detect_mps(apple_silicon: bool, plat: str, crawl4ai_python: str | None) -> bool:
+def detect_mps(apple_silicon: bool, plat: str, crawl4ai_python: str | None) -> tuple[bool, str | None]:
     if not (apple_silicon and plat == "macos"):
-        return False
+        return False, None
     py = crawl4ai_python or "python3"
     val = _run([py, "-c", "import torch; print(torch.backends.mps.is_available())"])
     if val is not None:
-        return val.lower() == "true"
-    # torch not available — fall back to arch check
-    return True  # we already know apple_silicon and macos
+        return val.lower() == "true", None
+    # torch not available or import failed — safe default is False
+    return False, "torch not importable or MPS check failed on this machine"
 
 
 def detect_cuda(crawl4ai_python: str | None) -> bool:
@@ -313,7 +313,7 @@ def detect_runtime(performance_mode_override: str | None = None) -> dict:
     crawl4ai_python = tools["crawl4ai_python"]
     docling_python = tools["docling_python"]
 
-    mps_available = detect_mps(apple_silicon, plat, crawl4ai_python)
+    mps_available, mps_detection_error = detect_mps(apple_silicon, plat, crawl4ai_python)
     cuda_available = detect_cuda(crawl4ai_python)
 
     # docling device
@@ -340,6 +340,7 @@ def detect_runtime(performance_mode_override: str | None = None) -> dict:
         "memory_gb": memory_gb,
         "mps_available": mps_available,
         "cuda_available": cuda_available,
+        "mps_detection_error": mps_detection_error,
         "fd_soft_limit": fd_soft,
         "fd_target": fd_target,
         "tier": tier,

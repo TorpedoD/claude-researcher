@@ -1,7 +1,7 @@
 # question_tree.json Contract
 
 **Artifact:** `question_tree.json`
-**Location:** `.research/run-NNN-TIMESTAMP/scope/question_tree.json` (per D-03/D-05)
+**Location:** `research/run-NNN-TIMESTAMP/scope/question_tree.json` (per D-03/D-05)
 **Format:** JSON
 **Producer:** research-orchestrator (scope planning phase)
 **Consumer(s):** research-collect (source discovery), research-synthesize (section ordering, INV-03)

@@ -1,7 +1,7 @@
 # collection_log.md Contract
 
 **Artifact:** `collection_log.md`
-**Location:** `.research/run-NNN-TIMESTAMP/collect/collection_log.md`
+**Location:** `research/run-NNN-TIMESTAMP/collect/collection_log.md`
 **Format:** Markdown
 **Producer:** research-collect
 

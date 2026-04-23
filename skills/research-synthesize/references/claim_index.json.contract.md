@@ -1,7 +1,7 @@
 # claim_index.json Contract
 
 **Artifact:** `claim_index.json`
-**Location:** `.research/run-NNN-TIMESTAMP/synthesis/claim_index.json`
+**Location:** `research/run-NNN-TIMESTAMP/synthesis/claim_index.json`
 **Format:** JSON
 **Producer:** research-synthesize
 **Consumer(s):** research-orchestrator (checkpoint gate 3), gap analysis
@@ -38,6 +38,8 @@ Maps every factual claim in raw_research.md to its supporting sources. Enables c
       "claim_text": "Raft leader election timeouts need 5-10x increase for edge networks",
       "claim_hash": "sha256:a1b2c3d4e5f6...",
       "section": "Consensus Mechanisms",
+      "subsection": "Leader Election",
+      "formatter_destination": null,
       "sources": [
         {
           "url": "https://example.com/papers/edge-raft",
@@ -75,3 +77,4 @@ Maps every factual claim in raw_research.md to its supporting sources. Enables c
 - The orchestrator shows `citation_coverage_pct` and `avg_sources_per_claim` at checkpoint gate 3
 - Gap analysis uses this index to identify weak-sourced claims (only tier 4-5 sources)
 - A `citation_coverage_pct` below 90% triggers a warning at checkpoint gate 3
+- `formatter_destination` is null when raw_research is produced; the formatter agent populates it with one of: `body`, `supplementary`, `references`, `merged:<hash>`, `table:<id>`, `diagram:<id>`. PRES-02 requires all claims have a non-null destination after formatting.

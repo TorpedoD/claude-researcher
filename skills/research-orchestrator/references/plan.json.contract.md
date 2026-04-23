@@ -3,7 +3,7 @@
 > As of Phase 10, this artifact lives under `scope/` in the run directory.
 
 **Artifact:** `plan.json`
-**Location:** `.research/run-NNN-TIMESTAMP/scope/plan.json`
+**Location:** `research/run-NNN-TIMESTAMP/scope/plan.json`
 **Format:** JSON
 **Producer:** research-orchestrator
 **Consumer(s):** research-collect, research-synthesize

@@ -56,6 +56,20 @@ If the user insists on "just do it" without answering:
 
 Then proceed, but note the defaults used in your final report to the user.
 
+### §2.6 Input Contract (Orchestrator-Invoked)
+
+When invoked by research-orchestrator (as a named agent call rather than a skill trigger), the following inputs are provided:
+
+| Input | Path | Description |
+|-------|------|-------------|
+| Raw research | `{run_dir}/synthesis/raw_research.md` | Completeness-first evidence dump |
+| Claim index | `{run_dir}/synthesis/claim_index.json` | Per-claim records; populate `formatter_destination` |
+| Citation registry | `{run_dir}/synthesis/citation_registry.json` | Frozen `[N]`→URL mapping |
+| Density hints | `{run_dir}/synthesis/density_hints.json` | Advisory per-section hints |
+| Format preferences | `manifest.format_preferences` | mode / audience / tone / output |
+
+These supersede the pre-flight questions in §2. The formatter agent reads format preferences from manifest and skips interactive mode selection.
+
 ---
 
 ## 3. Inputs Expected
@@ -108,7 +122,7 @@ The output file MUST contain these blocks, in this exact order:
 6. **Research Metadata** — topic, dates, source counts, credibility range, section count, mode used
 7. **Full Bibliography** — every source, grouped by credibility tier, alphabetized within each tier
 
-**Progressive disclosure contract:** a reader can stop at Short Summary and still understand the section. They can stop at Key Points and understand more deeply. They can stop at Detailed Findings for full depth. Each layer must be self-contained — never require the reader to go deeper to make sense of a shallower layer.
+**Progressive disclosure contract:** a reader can stop at Short Summary and still understand the section. They can stop at Key Points and understand more deeply. They can stop at Detailed Findings for full depth. Each layer must be self-contained — never require the reader to go deeper to make sense of a shallower layer. This corresponds to the L0 (Skim) / L1 (Study) / L2 (Reference) taxonomy defined in `references/information-levels.md`.
 
 In **Summary mode**, omit the Detailed Findings layer entirely. In **Full Report mode**, include all layers. In **Documentation mode**, all layers are required AND the Teaching Layer is mandatory.
 
@@ -175,6 +189,8 @@ Before writing prose, ask *"Can this be shown instead of said?"* Then ask *"Woul
 - Never render numeric comparisons as prose when a table fits.
 - Never describe a multi-step process in a paragraph when a flowchart fits.
 - Mermaid blocks go as fenced ` ```mermaid ` code blocks — GitHub, Obsidian, VS Code, and most modern renderers display them natively.
+
+When invoked via orchestrator with `density_hints.json` available, honor `strong` hints (must promote) and `moderate` hints (should promote, may override with justification). DENS-01: max one primary table and one primary diagram per `##` section; additional visuals go to `### Supplementary Findings`.
 
 ### Minimal mermaid patterns
 
@@ -277,6 +293,42 @@ Read this file with the Read tool when you need a concrete skeleton to fill in o
 11. **Write the file(s).** Standard Markdown → `.md`. Quarto → `.qmd`. Both → write both.
 12. **Self-verify** against §14 Quality Checklist.
 13. **Report to the user:** mode used, output path(s), section count, visual count, source count, any defaults applied.
+
+---
+
+## §11 Selection & Density Logic
+
+When processing raw_research input (from research-orchestrator pipeline runs):
+
+### Density Scan
+
+Run `scripts/density_scan.py` on raw_research.md to get per-section advisory hints. Hints have strength: `strong | moderate | weak`. See `references/selection-rules.md` for action thresholds.
+
+### Information Levels
+
+Apply L0/L1/L2 taxonomy per section (see `references/information-levels.md`). Every section gets L0+L1. L2 is added when `suggested_level == "reference"` or mode is Full Report.
+
+### Claim Movement
+
+All claims from raw_research must surface somewhere in the report (PRES-01). Formatter moves claims between layers (body → supplementary → references → table/diagram) but never deletes them. Every movement is logged in `output/formatter_decisions.md` (FMT-03).
+
+### Coverage Audit
+
+Before returning, run `scripts/coverage_audit.py` to verify PRES-02 compliance (all claims have destinations). Surface any violations at Gate 3.
+
+### Optional Scripts
+
+`scripts/paragraph_ceiling.py` — invokes when the formatter agent judges mechanical checking would improve output quality. Not mandatory.
+
+---
+
+## §12 Contradiction Preservation
+
+CONF-01: Every contradiction surfaced in raw_research must remain visible in output/report.md. It may move sections or be summarized, but must not be hidden or dropped.
+
+CONF-02: When compressing conflict prose, always preserve both sides of the conflict and both citations.
+
+Contradictions may be placed in a dedicated `## Contradictions` section OR integrated into thematic sections with a "Conflicting Evidence" sub-heading. Either placement satisfies CONF-01.
 
 ---
 

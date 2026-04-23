@@ -179,62 +179,82 @@ references, academic papers, archived tutorials) — cuts refetch cost on re-run
 
 Log `success: false` records to `collection_log.md`, skip the evidence write, continue processing. Mark topic as "None" if all seed URLs fail. See Error Handling Summary table.
 
-## Document Collection (Docling)
+## Document Collection (Docling SDK)
 
-> **No auto-install.** If `docling` is missing from PATH, notify the user with the install command (`pipx install docling`) and stop. Never execute install commands from within the pipeline. See research-orchestrator SKILL.md "Dependency install policy".
+> **No auto-install.** If `docling` import fails, `parallel_docling.py` emits a Gate-1 remediation block and exits 1. Never run install commands from within the pipeline. See research-orchestrator SKILL.md "Dependency install policy".
 
-Use the `docling` CLI (Docling 2.86.0) with `xargs -P` for parallel processing of local
-documents. Do NOT loop one-at-a-time.
+Use `scripts/parallel_docling.py` (SDK-driven, persistent `DocumentConverter` per worker) for all document collection. Do NOT use `xargs -P docling` — the SDK path is faster (models load once per worker), caches results, and produces richer provenance.
 
-### 1. Parallel Local PDF/DOCX/PPTX Processing
+### 1. Format Gate
 
-1. Write the list of local document paths to a staging file:
-   ```bash
-   mkdir -p collect/evidence/_staging collect/_staging
-   printf '%s\n' "${doc_paths[@]}" > collect/_staging/doc_batch.txt
-   ```
-2. Dispatch 4-way concurrent Docling (one `docling` process per document, capped at 4 in
-   flight). Output goes to a staging dir keyed by the input basename; errors are appended
-   to a shared error log:
-   ```bash
-   # Read Docling profile from manifest
-   DOCLING_PAR=$(jq -r '.runtime_profile.resolved.docling_parallelism // 4' manifest.json)
-   DOCLING_DEVICE=$(jq -r '.runtime_profile.resolved.docling_device // "cpu"' manifest.json)
-   DOCLING_THREADS=$(jq -r '.runtime_profile.resolved.docling_threads // 1' manifest.json)
-   DOCLING_BIN=$(jq -r '.runtime_profile.tools.docling_cli // "docling"' manifest.json)
+Before dispatching to Docling, `parallel_docling.py` routes each file:
 
-   cat collect/_staging/doc_batch.txt | xargs -I{} -P "$DOCLING_PAR" sh -c '
-     out="collect/evidence/_staging/$(basename "$1").md"
-     "$DOCLING_BIN" "$1" --to md --device "$DOCLING_DEVICE" --num-threads "$DOCLING_THREADS" \
-                    --document-timeout 120 > "$out" 2>> collect/_staging/doc_errors.txt \
-       || echo "FAIL $1" >> collect/_staging/doc_errors.txt
-   ' _ {}
-   ```
-3. Rename staging files to final names **in input-file order** (deterministic numbering):
-   for each input path in `doc_batch.txt`, assign the next `{NNN}`, derive `{slug}` from the
-   filename, prepend the YAML provenance header to the staged markdown, and write to
-   `collect/evidence/doc-{NNN}-{slug}.md`.
-4. Append any lines from `collect/_staging/doc_errors.txt` to `collection_log.md` Errors
-   section.
+| Format | Action | Reason field |
+|--------|--------|--------------|
+| `.pdf`, `.docx`, `.pptx`, `.xlsx` | Docling SDK | `whitelist_extension` |
+| `.html` with body > 200 KB OR > 3 tables OR `<iframe>` | Docling SDK | `complex_html` |
+| `.html` (simple) | Direct read | `direct_read_simple_html` |
+| `.md`, `.txt`, unknown | Direct read | `direct_read_text` |
 
-`{NNN}` continues the sequential numbering for the `doc-*` type (web and doc have separate
-sequences per the Output Files contract).
+Log `extraction_method` + `extraction_method_reason` fields appear in every JSONL record and provenance YAML.
 
-### 2. Section Preservation
+### 2. Invocation
 
-Docling preserves section headings and table structure in markdown output. Do NOT post-process these away -- section structure is critical for synthesis.
+```bash
+DOCLING_PYTHON=$(jq -r '.runtime_profile.tools.docling_python // "python3"' manifest.json)
+mkdir -p collect/evidence/_staging
 
-### 3. Concurrency Tuning
+printf '%s\n' "${doc_paths[@]}" > collect/_staging/doc_batch.txt
 
-- `xargs -P 4` matches typical laptop/workstation CPU limits. Lower to `-P 2` on low-memory
-  machines; raise to `-P 8` on well-provisioned runs if all source documents are small.
-- Docling's own `--num-threads` flag parallelizes *within* a single document. Prefer
-  inter-document parallelism (`xargs -P`) over `--num-threads` for research runs with many
-  small/medium docs; combine them only for runs with one or two very large PDFs.
+"$DOCLING_PYTHON" ~/.claude/skills/research-collect/scripts/parallel_docling.py \
+    --input-list collect/_staging/doc_batch.txt \
+    --output-dir collect/evidence/_staging \
+    --runtime-profile manifest.json \
+    > collect/_staging/docling_out.jsonl
+```
 
-### 4. Document Error Handling
+If `parallel_docling.py` exits 1 with a Gate-1 remediation block, surface it to the user and stop. Never fall back to `xargs -P docling`.
 
-Failures are captured via `2>>` to `doc_errors.txt`; `xargs` continues remaining files. After the batch, transcribe errors to `collection_log.md`. See Error Handling Summary table.
+### 3. Content-Hash Cache
+
+Outputs are cached at `manifest.runtime_profile.resolved.docling_cache_dir` (default `~/.cache/research-collect/docling`). Cache key includes file bytes + Docling version + device + threads + platform. A change in device (e.g., cpu→mps) or Docling version produces a cache miss. `DOCLING_CACHE_HIT_RATE` is logged to stderr at run end.
+
+### 4. Quality Classification (Unified Schema)
+
+Both Crawl4AI and Docling use the same five-label schema:
+
+| Class | Meaning | Action |
+|-------|---------|--------|
+| `success` | Content meets format-specific thresholds | Include in evidence |
+| `thin_success` | Marginal content, meets minimum bar | Include; warn `DOCLING_THIN_OUTPUT` |
+| `challenge_page` | Anti-bot / soft-fail (crawl path only) | Quarantine → `quarantine/challenge/` |
+| `partial` | Timeout or below minimum thresholds | Quarantine → `quarantine/docling/` |
+| `failure` | Exception or empty output | Quarantine → `quarantine/docling/` |
+
+Format-aware Docling thresholds:
+
+| Format | `success` | `thin_success` | `partial` |
+|--------|-----------|----------------|-----------|
+| PDF, DOCX | ≥ 2000 chars + ≥ 1 heading | 800–2000 chars + ≥ 1 heading | < 800 chars OR timeout |
+| PPTX | ≥ 3 slide-level sections | 1–2 sections | 0 sections OR timeout |
+| XLSX | ≥ 1 table + ≥ 1 sheet | 1 sheet, no tables | 0 sheets OR timeout |
+| Complex HTML | ≥ 1 table OR heading density ≥ 1/500ch | heading present | none of above |
+
+### 5. Resume Semantics
+
+`parallel_docling.py` writes outputs atomically per file; partial runs are safe to re-run (cache prevents redundant work). Failed docs are quarantined; re-runs will skip cached successes automatically.
+
+Resume refuses to reuse a prior staged result if any of the following hold:
+
+1. `status=success` but the recorded `staged_path` no longer exists on disk → reject, refetch.
+2. The same `task_id` appears twice with different URLs → fail loud (`ResumeViolation`).
+3. `sha256(staged_file_bytes) != recorded content_hash` → reject, refetch.
+
+Rejected entries are logged as `RESUME_REFETCH` with a reason code. `ResumeViolation` aborts the run.
+
+### 6. Section Preservation
+
+Docling preserves section headings and table structure in markdown output. Do NOT post-process these away — section structure is critical for synthesis.
 
 ## Provenance Headers
 
@@ -253,10 +273,23 @@ freshness:
   publication_date: "2025-01-15"
   freshness_score: 0.9
 fetched_at: "2026-04-11T14:30:22+00:00"
-extraction_method: crawl4ai
+extraction_method: crawl4ai          # crawl4ai | docling_sdk | direct_read
+extraction_method_reason: ""         # whitelist_extension | complex_html | direct_read_text | ...
+quality_class: success               # success | thin_success | challenge_page | partial | failure
 content_hash: "sha256:abc123..."
 quality_notes: ""
 suspicious: false
+# Crawl-path only:
+header_profile_id: 0                 # which UA/Accept-Language profile was used
+adaptive_backoff_active_at_fetch: false
+referer_injected: false              # deep crawl: true if child shares seed's registrable domain
+# Docling-path only:
+docling_version: ""
+docling_device: cpu
+docling_threads: 2
+docling_timeout: 120
+docling_cache_hit: false
+docling_processing_seconds: 0.0
 ---
 ```
 
@@ -366,13 +399,13 @@ The following quality checks run automatically inside `parallel_crawl.py`:
 
 **QUAL-02 Soft-failure detection**: Pages returning HTTP 200 but containing anti-bot patterns ("verify you are human", "enable javascript", "cloudflare ray id", "captcha", etc.) are classified as `challenge_page` and routed to `quarantine/challenge/`.
 
-**QUAL-03 Content sufficiency**: Each page is classified as `success` (≥1500 chars, ≥1 heading), `thin_success` (500–1500 chars), `likely_truncated` (ends mid-sentence, <2000 chars), or `failure`. The `classification` field is included in every JSONL record.
+**QUAL-03 Content sufficiency (unified schema)**: Each result is classified using the five-label schema: `success | thin_success | challenge_page | partial | failure`. The `quality_class` field appears in every JSONL record and provenance YAML. See the Document Collection section for format-aware Docling thresholds; crawl-path thresholds remain: `success` ≥ 1500 chars + ≥ 1 heading, `thin_success` 500–1500 chars, `challenge_page` for anti-bot patterns, `failure` otherwise.
 
 **QUAL-04 Domain diversity**: After collection, `collection_log.md` includes per-domain page counts and top-domain share. Gate 2 warns if `DOMAIN_CONCENTRATION` is flagged (one domain > 40% of pages).
 
-**QUAL-05 Input-order canonicalization**: `parallel_crawl.py` (flat mode) buffers all results and emits sorted by `input_index` — output is deterministic regardless of concurrency level.
+**QUAL-05 Input-order canonicalization**: `parallel_crawl.py` (flat mode) writes staged `.md` files immediately to `_staging/` via `staging_index.jsonl`, then renames to canonical `{NNN}-{slug}.md` order post-dispatch. JSONL output is still emitted sorted by `input_index`.
 
-**QUAL-06/07 Adaptive backoff**: A sliding 50-result window monitors 429/503 rate and success rate. Events logged to `--backoff-log` if set, else stderr. After 4 backoff transitions, `BACKOFF_LOCK` is emitted and no further adjustments are made.
+**QUAL-06/07 Adaptive backoff (active)**: `BackoffMonitor` now mutates `dispatcher.max_session_permit` one ladder step at a time (down on global 429 rate > 15%, up on recovery < 5%, minimum 30s dwell between mutations). Host-only 429 spikes bump only that host's `rate_limiter.domains[host].current_delay`. `Retry-After` headers on 429/503 are honored. Events logged as `BACKOFF_THROTTLE_APPLIED`. After 4 events, `BACKOFF_LOCK` is emitted and no further mutations occur.
 
 **QUAL-11 Coverage-before-budget**: Reserve the last 25% of the page budget for underrepresented source tiers (T1 official / T2 papers) if any tier has zero coverage.
 

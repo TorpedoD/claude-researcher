@@ -1,7 +1,7 @@
 # inventory.json Contract
 
 **Artifact:** `inventory.json`
-**Location:** `.research/run-NNN-TIMESTAMP/collect/inventory.json`
+**Location:** `research/run-NNN-TIMESTAMP/collect/inventory.json`
 **Format:** JSON
 **Producer:** research-collect
 **Consumer(s):** research-synthesize, research-orchestrator

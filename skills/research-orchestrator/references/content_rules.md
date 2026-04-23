@@ -18,6 +18,8 @@ CONS-01 applies to BOTH `##` and `###` headings (every heading needs a body).
 | CONS-02 (min) | Minimum substantive content | <2 sentences in one ## section | warn | D-18 |
 | CONS-02 (guidance) | Subsection-split guidance | >800 words in one ## section | info | D-18 |
 
+**CONS-02 scope:** Applies to `output/report.md` only. `synthesis/raw_research.md` is EXEMPT — no word-count ceiling applies to raw research. Use `--target=raw` to skip this check on raw_research.md.
+
 ## Violation Payload
 
 Every violation in the output JSON has these fields:
@@ -75,8 +77,29 @@ URLs appearing inside a `### Section References` block do NOT count toward the R
 
 - HIER-01, HIER-02, HIER-03, HIER-05, RULE-01, LINK-01: LLM-instruction compliance only, enforced in synthesizer SKILL.md.
 - Anchor resolution for cross-section links: cosmetic; Phase 16 QA may add.
-- Paragraph length (HIER-04 ≤5 sentences): not machine-checked in Phase 11.
+- Paragraph length (HIER-04 ≤5 sentences): not machine-checked in Phase 11. **Scope: `output/report.md` only. `synthesis/raw_research.md` is EXEMPT** — the formatter owns paragraph-length enforcement.
 - CONS-02 sentence counting uses `[.!?](?:\s|$)` — counts punctuation-terminated sentence boundaries.
+
+## PRES-02 — Claim destination coverage
+
+- **Target**: `output/report.md` (checked via coverage_audit.py)
+- **Rule**: Every claim in `synthesis/claim_index.json` must have a non-null `formatter_destination`
+- **Severity**: error (blocking at Gate 3)
+- **Checker**: `~/.claude/skills/research-format/scripts/coverage_audit.py`
+
+## CONF-01 — Contradiction visibility
+
+- **Target**: `output/report.md`
+- **Rule**: Every contradiction surfaced in `## Contradictions` of raw_research must appear somewhere in the report (dedicated section or "Conflicting Evidence" subsection)
+- **Severity**: warn
+- **Checker**: manual diff or scripted grep
+
+## SEL-01 — URL coverage
+
+- **Target**: `output/report.md`
+- **Rule**: Every URL in `synthesis/citation_registry.json` must be cited at least once in the report body or section references
+- **Severity**: warn
+- **Checker**: `coverage_audit.py` (secondary check)
 
 ## Invocation
 

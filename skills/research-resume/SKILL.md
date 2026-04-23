@@ -7,13 +7,13 @@ allowed-tools: [Read, Bash, Task]
 
 # Research Resume
 
-Resume an interrupted research pipeline run from its last completed phase without having to remember the run ID or the original request. Scans `.research/` for runs whose `manifest.json` shows at least one `phase_status` value other than `complete`, lists them, and hands off to the research-orchestrator agent via `init_run.py --resume`.
+Resume an interrupted research pipeline run from its last completed phase without having to remember the run ID or the original request. Scans `research/` for runs whose `manifest.json` shows at least one `phase_status` value other than `complete`, lists them, and hands off to the research-orchestrator agent via `init_run.py --resume`.
 
 ---
 
 ## Quick Start
 
-Scan `.research/` for interrupted runs, let the user pick one (or auto-select if only one exists), and resume from the last completed phase via `init_run.py --resume <run_id>`.
+Scan `research/` for interrupted runs, let the user pick one (or auto-select if only one exists), and resume from the last completed phase via `init_run.py --resume <run_id>`.
 
 ---
 
@@ -29,7 +29,7 @@ Invoke the existing helper that ships with `research-orchestrator`:
 python3 ~/.claude/skills/research-orchestrator/scripts/init_run.py --list-interrupted
 ```
 
-Or, equivalently, import and call `find_interrupted_runs()` from `init_run.py`. An **interrupted run** is any `.research/run-NNN-TIMESTAMP/` whose `manifest.json` contains at least one `phase_status` value of `running` or `failed` (i.e., not every phase is `complete`). If the `.research/` directory does not exist, treat the result as zero interrupted runs.
+Or, equivalently, import and call `find_interrupted_runs()` from `init_run.py`. An **interrupted run** is any `research/run-NNN-TIMESTAMP/` whose `manifest.json` contains at least one `phase_status` value of `running` or `failed` (i.e., not every phase is `complete`). If the `research/` directory does not exist, treat the result as zero interrupted runs.
 
 ### Step 2 — Zero interrupted runs
 
@@ -87,7 +87,7 @@ Then spawn the `research-orchestrator` agent via `Task()` so it continues the pi
 This skill ships **no new scripts**. It wraps existing infrastructure:
 
 - `~/.claude/skills/research-orchestrator/scripts/init_run.py`
-  - `find_interrupted_runs()` — scans `.research/` and returns interrupted runs
+  - `find_interrupted_runs()` — scans `research/` and returns interrupted runs
   - `--resume <run_id>` — loads an existing run and prepares it for continuation
 
 If either function is missing, upgrade research-orchestrator before using this skill.
@@ -96,7 +96,7 @@ If either function is missing, upgrade research-orchestrator before using this s
 
 ## Edge Cases
 
-- **No `.research/` directory** — treat as zero interrupted runs (Step 2).
+- **No `research/` directory** — treat as zero interrupted runs (Step 2).
 - **Manifest unreadable / malformed** — skip that run silently and continue scanning.
 - **All phases already `complete`** — the run is not interrupted; exclude it from the list.
 - **User declines confirmation** — exit cleanly without modifying any files.

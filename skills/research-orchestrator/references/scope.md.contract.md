@@ -3,7 +3,7 @@
 > As of Phase 10, this artifact lives under `scope/` in the run directory.
 
 **Artifact:** `scope.md`
-**Location:** `.research/run-NNN-TIMESTAMP/scope/scope.md`
+**Location:** `research/run-NNN-TIMESTAMP/scope/scope.md`
 **Format:** Markdown
 **Producer:** research-orchestrator
 **Consumer(s):** research-collect, research-synthesize

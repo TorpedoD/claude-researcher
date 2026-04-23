@@ -50,6 +50,8 @@ Before beginning synthesis, verify:
 2. `collect/evidence/` directory exists and contains at least 1 file -- if empty, STOP and report error
 3. Graph output files are present -- if missing, fall back to alphabetical section ordering (see Error Handling)
 
+If `collect/inventory.json` exists, pre-build `synthesis/citation_registry.json` by assigning global `[N]` numbers to each URL in inventory traversal order. Write the registry before writing any part of raw_research.md. Do NOT reassign numbers mid-synthesis.
+
 ## Degraded Collection Check
 
 Before synthesizing, read `manifest.json` and check `collection_mode`:
@@ -83,7 +85,7 @@ report_depth = m.get('report_depth', 'full')  # D-26 default
 **FULL depth** (D-25): Apply when `report_depth == "full"`:
 
 - >=3 H3 subsections per major H2 topic
-- >=3-4 substantive paragraphs per section
+- Enumerate ALL relevant facts per section and subsection — no paragraph count ceiling. Fact density over prose polish.
 - Tables for any comparison of >=3 parallel items (HIER-01)
 - Specific technical details (concrete numbers, version strings, dates, names, URLs) — NEVER vague descriptions like "fast", "recently", "various"
 - Inline cross-references "(See [Section Name](#anchor))" where earlier-introduced concepts are built upon (LINK-01)
@@ -116,7 +118,7 @@ When writing each section, look up its depth in `depth_map`:
 - **Medium (default)** — complete practical understanding: what, how, why, how it connects. Reader needs no external sources after reading. (D-11)
 - **High** — beyond practical: implementation details, edge cases, alternatives, deeper mechanics. (D-12)
 
-**Pattern (apply at all depths):** define → how it operates → why it exists → how it connects to other components. (D-13) Apply briefly at Low, completely at Medium, exhaustively at High.
+**Pattern (apply at all depths):** define → how it operates → why it exists → how it connects to other components. (D-13) Apply the coverage checklist at each depth: Low = one representative example per bucket; Medium = all facts per bucket without proof chains; High = all facts plus alternative interpretations, edge cases, and counter-evidence.
 
 **Locking:** depth is LOCKED after Gate 1. The synthesizer may EXPAND upward during writing (if a Low section needs more detail for completeness), but NEVER downgrade. (D-06)
 
@@ -219,8 +221,29 @@ No single source URL may be cited more than 3 times within the same ## section (
 
 - CONS-01 (D-17): Every ## or ### heading MUST be followed by at least one paragraph of content before the next heading. Never emit two consecutive headings.
 - CONS-02 minimum (D-18): Every ## section MUST contain >=2 substantive sentences. A heading plus a single short sentence is not a section.
-- CONS-02 guidance (D-18): If a section exceeds ~800 words, add a ### subsection split rather than continuing as a single block. This is a GUIDANCE THRESHOLD that TRIGGERS A SUBSECTION SPLIT, not a hard word cap — do NOT truncate mid-thought.
+- CONS-02 guidance (D-18): If a section exceeds ~800 words, add a ### subsection split rather than continuing as a single block. This is a GUIDANCE THRESHOLD that TRIGGERS A SUBSECTION SPLIT, not a hard word cap — do NOT truncate mid-thought. NOTE: CONS-02 (word count guidance) applies to `output/report.md` ONLY. Raw research is exempt. The synthesizer should NOT split sections to meet word-count thresholds — dump all relevant facts.
 - Enforcement (D-19): (1) synthesizer instruction above, (2) post-synthesis Python check via scripts/check_content_rules.py (CONS-01 flags consecutive headings; CONS-02 flags <2 sentences as warn, >800 words as info). See `/Users/work/.claude/skills/research-orchestrator/references/content_rules.md` for the contract.
+
+## Evidence-to-Cluster Routing
+
+Before synthesis (in mode=full or orchestrator pre-step), build `synthesis/evidence_routing.json`:
+- For each evidence file, read its YAML frontmatter to get its URL
+- Look up URL in inventory.json to identify associated topics
+- Cross-reference with cluster_map.json node membership to assign cluster
+- If evidence file's nodes span >=2 clusters: mark as cross_cutting
+- Record routing_confidence: "direct_graph_match" | "inferred_url_match" | "cross_cutting_heuristic" | "manual_fallback"
+
+Schema per entry:
+```json
+{
+  "evidence_file": "evidence/web-012-X.md",
+  "assigned_cluster": 2,
+  "cross_cutting_clusters": [0, 4],
+  "routing_confidence": "direct_graph_match"
+}
+```
+
+Cross-cutting files are fed to ALL their relevant cluster synthesizer calls.
 
 ## Section Ordering (Layer-First, Graph-Informed Intra-Layer)
 
@@ -344,6 +367,8 @@ Include a "Source Quality Overview" section early in raw_research.md.
 The primary research output. See `references/raw_research.contract.md` for full format.
 
 **Raw research MUST be maximally detailed.** Include ALL scraped evidence, dense inline citations, full technical blocks (code, tables, parameters, version numbers), quotations, and edge cases. No paragraph limits. No length constraints. No readability constraints. This file is for completeness and provenance — NOT for human reading. The research-format skill (downstream) decides what lands in the final report. Err toward over-inclusion: if in doubt, include it.
+
+Raw research is **completeness-first**: prioritize capturing every fact from evidence over readability. Use ORDER-01 (definition → mechanism → data → comparisons → implications → contradictions) to structure facts within subsections. The formatter owns readability.
 
 **Required sections in order (see `references/output-quality-spec.md` § Document Structure):**
 

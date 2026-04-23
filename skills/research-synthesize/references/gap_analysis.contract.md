@@ -1,7 +1,7 @@
 # gap_analysis.md Contract
 
 **Artifact:** `gap_analysis.md`
-**Location:** `.research/run-NNN-TIMESTAMP/synthesis/gap_analysis.md`
+**Location:** `research/run-NNN-TIMESTAMP/synthesis/gap_analysis.md`
 **Format:** Markdown
 **Producer:** research-synthesize
 **Consumer(s):** research-orchestrator (gap-fill decision)

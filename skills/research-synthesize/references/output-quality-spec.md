@@ -41,9 +41,11 @@ Never attempt to write the TOC inline during pass 1 — it will be incomplete.
 
 Every subsection at every depth level follows the same four-part pattern: **define → how it operates → why it exists → how it connects to other components**. (D-13)
 
-- At Low depth: apply the pattern briefly (1–2 sentences per part).
-- At Medium depth: apply the pattern completely (1–2 paragraphs per part or equivalent structured content).
-- At High depth: apply the pattern exhaustively (multiple paragraphs, tables, diagrams per part as needed).
+**Fact-density pattern (apply at all depths):** Under each `##` cluster and `###` subtopic, enumerate every distinct fact, number, version string, procedure step, comparative data point, edge case, or claim found in cluster-relevant evidence, each with its `[N](url)` citation. The Define → How → Why → Connects structure serves as a **coverage checklist** (not a paragraph budget) — ensure facts from each category are present. Apply the checklist lightly at Low depth, completely at Medium, exhaustively at High.
+
+- At Low depth: apply the pattern briefly — one representative example per bucket.
+- At Medium depth: apply the pattern completely — all facts per bucket without proof chains.
+- At High depth: apply the pattern exhaustively — all facts plus alternative interpretations, edge cases, and counter-evidence.
 
 ### Locking and Expansion
 
@@ -152,7 +154,9 @@ Use the shortcode form `{{< pagebreak >}}` — NOT the raw LaTeX block form `{=l
 
 ## Readability Rules (Cross-reference)
 
-These apply across all depth levels, per research-synthesize SKILL.md § Readability Rules (HIER-04):
+NOTE: HIER-04 applies to `output/report.md` ONLY, not `raw_research.md`. The synthesizer is exempt from paragraph length limits.
+
+These apply across all depth levels to `output/report.md`, per research-synthesize SKILL.md § Readability Rules (HIER-04):
 
 - Paragraphs ≤ 5 sentences
 - Header hierarchy: ##, ###, ####. Never skip a level.

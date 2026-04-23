@@ -122,7 +122,7 @@ def append_log(run_dir, phase, action, status, detail):
    ```bash
    python3 ~/.claude/skills/research-orchestrator/scripts/init_run.py "user request text" --max-pages 75 --max-per-domain 15 --max-depth 3
    ```
-   This creates `.research/run-NNN-TIMESTAMP/` with `manifest.json`. Record the run directory path for all subsequent operations.
+   This creates `research/run-NNN-TIMESTAMP/` with `manifest.json`. Record the run directory path for all subsequent operations.
 
    Log: `append_log(run_dir, 'planning', 'run_initialized', 'ok', f'Run {run_id} created')`
 
@@ -134,7 +134,7 @@ def append_log(run_dir, phase, action, status, detail):
    ```
 
    Scan `$PROJECT_ROOT` (only) for:
-   - Existing `.research/` runs (previous research on related topics)
+   - Existing `research/` runs (previous research on related topics)
    - PDF files, markdown documents, or other local sources relevant to the request
    - Any files the user explicitly referenced in their request
 
@@ -232,6 +232,33 @@ def append_log(run_dir, phase, action, status, detail):
    After this step, proceed to the existing scope-review step (unchanged). The selected depth is consumed by the synthesizer at spawn time — see `~/.claude/skills/research-synthesize/SKILL.md` → Report Depth section.
 
    **Resume compatibility note:** If Gate 1 is skipped due to a resumed run, `manifest.report_depth` may be absent. The synthesizer defaults to `"full"` per D-26 — do NOT retroactively write this field on resume.
+
+6c.5. **Gate 1 crawl aggressiveness (performance_mode).** After report-depth selection and before the scope-review AskUserQuestion, surface hardware capability and ask for crawl aggressiveness.
+
+   Skip this step if `RESEARCH_PERF_MODE` env var is pre-set; log `perf mode pre-selected via env: $RESEARCH_PERF_MODE` and write to manifest.
+
+   Otherwise:
+   1. Read `manifest.runtime_profile` for `tier`, `cores`, `memory_gb`, `mps_available`.
+   2. Print one-line preamble: `Detected: tier=<tier>, cores=<N>, mem=<N>GB, MPS=<available|unavailable>`
+   3. Read `CEILINGS[tier]` from `scripts/detect_runtime.py` to populate option descriptions:
+
+   ```python
+   perf_mode = AskUserQuestion(
+       question="Crawl aggressiveness — match to your hardware and risk tolerance.",
+       options=[
+           {"label": "conservative", "value": "conservative",
+            "description": f"{CEILINGS[tier]['conservative']['max_concurrent']} concurrent · per-host {CEILINGS[tier]['conservative']['per_domain_cap']} · docling {CEILINGS[tier]['conservative']['docling_parallelism']}×{CEILINGS[tier]['conservative']['docling_threads']} — lowest 429 risk"},
+           {"label": "balanced", "value": "balanced",
+            "description": f"{CEILINGS[tier]['balanced']['max_concurrent']} concurrent · per-host {CEILINGS[tier]['balanced']['per_domain_cap']} · docling {CEILINGS[tier]['balanced']['docling_parallelism']}×{CEILINGS[tier]['balanced']['docling_threads']} — default"},
+           {"label": "aggressive", "value": "aggressive",
+            "description": f"{CEILINGS[tier]['aggressive']['max_concurrent']} concurrent · per-host {CEILINGS[tier]['aggressive']['per_domain_cap']} · docling {CEILINGS[tier]['aggressive']['docling_parallelism']}×{CEILINGS[tier]['aggressive']['docling_threads']} — UA rotation + same-site Referer"},
+       ],
+       multiSelect=False,
+   )
+   ```
+
+   4. Re-invoke `init_run.py --performance-mode <choice>` to refresh `manifest.runtime_profile.resolved` with the new performance_mode values (including `crawl_user_agent_mode`, `backoff_min_dwell_seconds`, etc.).
+   5. Log: `append_log(run_dir, 'gate_1', 'perf_mode_selected', 'ok', f'performance_mode={perf_mode}')`
 
 6d. **Gate 1 per-section depth table (Phase 12 — D-06..D-09).** After Full/Summary selection and before scope-review confirmation, present a per-section depth table.
 
@@ -338,7 +365,7 @@ def append_log(run_dir, phase, action, status, detail):
    - Write `scope/question_tree.json` via `write_question_tree(run_dir, tree)` (format per `references/question_tree.json.contract.md`)
    - Validate `plan.json`:
      ```bash
-     python3 ~/.claude/skills/research-orchestrator/scripts/validate_artifact.py .research/run-NNN/scope/plan.json ~/.claude/skills/research-orchestrator/references/plan.schema.json
+     python3 ~/.claude/skills/research-orchestrator/scripts/validate_artifact.py research/run-NNN/scope/plan.json ~/.claude/skills/research-orchestrator/references/plan.schema.json
      ```
    - **Gate 1 layered-plan validator** (D-16..D-19): run the question tree validator with auto-regenerate loop.
      ```python
@@ -429,11 +456,26 @@ def append_log(run_dir, phase, action, status, detail):
 
    See `references/checkpoint_protocol.md` Gate 2 for full specification.
 
-   **Collection quality warnings**: Check `manifest.collection_warnings` for:
-   - `BACKOFF_LOCK`: concurrency was frozen due to excessive rate-limit backoff
-   - `DOMAIN_CONCENTRATION`: one domain dominated coverage (top-1 share > 40%)
-   - `DEVICE_FALLBACK`: Docling fell back from MPS/CUDA to CPU for >10% of docs
-   Surface any present as warnings before proceeding to synthesis.
+   **Collection quality warnings**: Check `manifest.collection_warnings` and stderr logs for:
+   - `BACKOFF_LOCK`: concurrency frozen due to excessive rate-limit backoff
+   - `DOMAIN_CONCENTRATION`: one domain > 40% top-1 share
+   - `DEVICE_FALLBACK`: Docling fell back from MPS/CUDA to CPU for > 10% of docs
+   - `DOCLING_THIN_OUTPUT`: one or more Docling docs returned `thin_success` class
+   - `DOCLING_PARTIAL`: one or more Docling docs routed to quarantine as `partial`
+   - `DOCLING_CACHE_HIT_RATE`: logged by parallel_docling.py (informational)
+   - `BACKOFF_THROTTLE_APPLIED`: active backoff mutated dispatcher concurrency mid-run
+
+   Surface any warnings before proceeding. Then present the quality summary table:
+
+   | Metric | Value | Flag |
+   |--------|-------|------|
+   | Top-domain share | `<N>%` | ⚠️ if > 40% |
+   | Challenge / soft-fail pages | `<N>` | ⚠️ if > 0 |
+   | thin_success (crawl) | `<N>` | info |
+   | thin_success (Docling) | `<N>` | info |
+   | Per-domain success-rate delta | worst: `<domain> −<N>%` | ⚠️ if any domain > 20% worse than expected |
+
+   Populate from `collection_log.md` domain stats and `docling_out.jsonl` quality_class counts.
 
    Log: `append_log(run_dir, 'gate_2', 'checkpoint_shown', 'ok', f'Gate 2: {N} sources, {M} quarantined')`
    Log (after user responds): `append_log(run_dir, 'gate_2', 'checkpoint_response', 'ok', f'User chose: {choice}')`
@@ -580,6 +622,36 @@ def append_log(run_dir, phase, action, status, detail):
    update_phase_status(manifest_path, "synthesis", "running")
    ```
 
+**Step 0 — Pre-synthesis preparation:**
+
+Before spawning the synthesizer, the orchestrator performs three setup tasks:
+
+**0a. Build citation registry** — Read `collect/inventory.json`. Assign global `[N]` integers to each URL in inventory traversal order. Write `synthesis/citation_registry.json`:
+```json
+{
+  "urls": [
+    {"n": 1, "url": "https://...", "source_title": "...", "source_tier": 1}
+  ],
+  "url_to_n": {"https://...": 1}
+}
+```
+This registry is frozen before synthesis begins. The synthesizer references it but never modifies it.
+
+**0b. Build evidence routing** — Cross-reference `collect/graphify-out/cluster_map.json` node memberships with evidence file frontmatter URLs via `collect/inventory.json`. Build `synthesis/evidence_routing.json`. Each entry records:
+- `evidence_file`: relative path to evidence file
+- `assigned_cluster`: primary cluster (highest node membership overlap)
+- `cross_cutting_clusters`: list of other clusters this file supports (if ≥2 clusters have membership)
+- `routing_confidence`: `"direct_graph_match"` | `"inferred_url_match"` | `"cross_cutting_heuristic"` | `"manual_fallback"`
+
+ROUTE-01: Files with cross_cutting_clusters get fed to ALL relevant cluster calls in fan-out mode.
+ROUTE-02: Track counts per confidence level; surface at Gate 3. If < 60% of files are `direct_graph_match`, log an advisory warning.
+
+**0c. Determine synthesis mode** — Count evidence files: `glob collect/evidence/*.md`. Record count to `manifest.json` as `evidence_count`.
+- If `evidence_count <= 30`: set `manifest.synthesis_mode = "single"` → proceed with single synthesizer call (existing path, mode="full")
+- If `evidence_count > 30`: set `manifest.synthesis_mode = "fanout"` → proceed with fan-out (see below)
+
+Log: `append_log(run_dir, 'synthesis', 'pre_synthesis_prep', 'ok', f'citation_registry built, evidence_routing built, synthesis_mode={synthesis_mode}')`
+
 2. **Spawn synthesizer agent.** This step is **unconditional and mandatory** — you MUST dispatch the synthesizer as a subagent via the Agent tool on every pipeline run, without exception. Never perform synthesis steps inline in the orchestrator. Never skip or defer this dispatch. If you are tempted to synthesize inline (e.g., the run is short, evidence is small), that is wrong — always dispatch.
 
    ```
@@ -605,6 +677,52 @@ def append_log(run_dir, phase, action, status, detail):
 
    > **Enforcement check:** After the Agent call returns, verify `logs/run_log.md` contains an `agent_spawned` entry for `research-synthesizer`. If it does not, the dispatch did not occur — abort with an error rather than continuing.
 
+   **Fan-out synthesis (when synthesis_mode == "fanout"):**
+
+   When `manifest.synthesis_mode == "fanout"`, instead of the single synthesizer call above, spawn one Agent call per cluster using `synthesis/evidence_routing.json` (respecting cross-cutting files):
+
+   ```python
+   for cluster_id, evidence_files in clusters.items():
+       Agent(
+           subagent_type="research-synthesizer",
+           prompt=f"""
+           mode: section_only
+           cluster_id: {cluster_id}
+           evidence_subset: {evidence_files}  # includes cross-cutting files for this cluster
+           citation_registry: {run_dir}/synthesis/citation_registry.json  # frozen, read-only
+           run_dir: {run_dir}
+
+           Write ONLY the ## cluster section for cluster {cluster_id}.
+           Follow FAN-01 template (one ## heading, ### subsections per ORDER-01, one Section References block).
+           Do NOT write Summary, TOC, Scope, Sources, or any other top-level sections.
+           Return the section markdown and claim delta list.
+           """
+       )
+   ```
+
+   After all cluster Agent calls complete, spawn an assembler call:
+
+   ```python
+   Agent(
+       subagent_type="research-synthesizer",
+       prompt=f"""
+       mode: assemble
+       run_dir: {run_dir}
+       section_files: [list of written section fragment files]
+
+       Assemble the final raw_research.md from section fragments.
+       Perform FAN-02 de-overlap pass (detect duplicate ### titles; consolidate by betweenness centrality).
+       Perform FAN-03 cross-reference repair (resolve broken (See [X](#slug)) anchors).
+       Write synthesis/assembly_overlaps.md documenting any overlaps found.
+       Write synthesis/raw_research.md (full assembled document with all headers).
+       Merge claim_index.json across sections.
+       Write synthesis/citation_audit.md and synthesis/gap_analysis.md.
+       """
+   )
+   ```
+
+   Log: `append_log(run_dir, 'synthesis', 'fanout_complete', 'ok', f'Fan-out: {len(clusters)} cluster calls + 1 assembler call')`
+
 3. **Synthesizer outputs.** Written to `<run_dir>/synthesis/`:
    - `raw_research.md` -- Full research document with inline citations (format per `references/raw_research.contract.md` in research-synthesize)
    - `claim_index.json` -- Claim-to-source mapping with metadata (format per `references/claim_index.json.contract.md`)
@@ -624,7 +742,7 @@ def append_log(run_dir, phase, action, status, detail):
    import subprocess, json
    script = Path.home() / ".claude/skills/research-orchestrator/scripts/check_content_rules.py"
    target = run_dir / "synthesis/raw_research.md"
-   result = subprocess.run(["python3", str(script), str(target)], capture_output=True, text=True)
+   result = subprocess.run(["python3", str(script), "--target=raw", str(target)], capture_output=True, text=True)
    try:
        payload = json.loads(result.stdout)
    except json.JSONDecodeError:
@@ -795,33 +913,94 @@ def append_log(run_dir, phase, action, status, detail):
 
    If `quarto_output == "none"`: skip `.qmd` production **and** `quarto render`, produce `report.md` only, proceed directly to Gate 4. `report.md` is **always** the primary output — HTML/PDF are supplementary (D-09).
 
-3. **Invoke research-format skill with parameter-embedded trigger phrase (D-06).** Construct the trigger phrase from `manifest.format_preferences` so research-format §2 Pre-Flight skips its interactive questions. All four parameters are pre-specified — every placeholder listed below MUST appear in the constructed trigger so research-format skips pre-flight:
+3. **Invoke research-formatter agent.**
 
-   - `{mode}` — output mode (Full Report / Summary / Documentation)
-   - `{audience}` — audience (External / Personal)
-   - `{tone}` — tone (Professional / Teachy)
-   - `{quarto_output_label}` — "Standard Markdown" when quarto_output=="none", else "Quarto"
-
+   Spawn the research-formatter agent:
 
    ```python
-   # quarto_output_label matches research-format §2.4 terminology
-   quarto_output_label = "Standard Markdown" if quarto_output == "none" else "Quarto"
-   output_files = "report.md" if not produce_qmd else "report.md and report.qmd"
-   trigger = (
-       f"Format this research as a {mode}, {audience} audience, {tone} tone, "
-       f"{quarto_output_label} output.\n"
-       f"Input: {run_dir}/synthesis/raw_research.md.\n"
-       f"Write {output_files} to {run_dir}/output/."
+   Agent(
+       subagent_type="research-formatter",
+       prompt=f"""
+       run_dir: {run_dir}
+
+       Format synthesis/raw_research.md into a polished report.
+
+       Format preferences from manifest:
+       - mode: {mode}
+       - audience: {audience}
+       - tone: {tone}
+       - quarto_output: {quarto_output}
+
+       Input files:
+       - synthesis/raw_research.md
+       - synthesis/claim_index.json (populate formatter_destination for all claims)
+       - synthesis/citation_registry.json
+       - synthesis/density_hints.json (run density_scan.py if not present)
+
+       Output files:
+       - output/report.md (always)
+       - output/report.qmd (if quarto_output != 'none')
+       - output/formatter_decisions.md (required)
+       - Updated synthesis/claim_index.json
+
+       Run coverage_audit.py before returning. Surface PRES-02/CONF-01 violations.
+       """
    )
    ```
 
-   **Security:** The trigger phrase is built from controlled-enum Gate 3 responses (no freeform text), never from `user_request`. Do NOT concatenate `user_request` into a `bash -c` string or the trigger phrase — all user-controlled text stays bounded to AskUserQuestion enums (mitigates prompt-injection/shell-injection at this boundary).
+   After formatter returns, proceed with Quarto render (scripts/publish.sh — unchanged).
 
-   The skill produces:
+   **Security:** All format preference values are from controlled-enum Gate 3 responses (no freeform text), never from `user_request`. Do NOT concatenate `user_request` into the prompt — all user-controlled text stays bounded to AskUserQuestion enums (mitigates prompt-injection at this boundary).
+
+   The formatter produces:
    - `<run_dir>/output/report.md` -- Polished markdown with TOC, executive summary, inline citations, bibliography (always produced).
    - `<run_dir>/output/report.qmd` -- Quarto-formatted version with callouts (only if `produce_qmd`).
+   - `<run_dir>/output/formatter_decisions.md` -- Audit log of claim movements, table/diagram decisions (required).
 
-   Log: `append_log(run_dir, 'formatting', 'format_invoked', 'ok', f'research-format skill triggered (mode={mode}, audience={audience}, tone={tone}, quarto_output={quarto_output})')`
+   Log: `append_log(run_dir, 'formatting', 'format_invoked', 'ok', f'research-formatter agent dispatched (mode={mode}, audience={audience}, tone={tone}, quarto_output={quarto_output})')`
+
+   **GATE-3A — Post-formatting impact summary** (displayed after formatter returns, before Quarto publish):
+
+   Print the following table to chat before proceeding to Step 3b:
+
+   | Metric | Value |
+   |--------|-------|
+   | Raw word count | {wc synthesis/raw_research.md} |
+   | Report word count | {wc output/report.md} |
+   | Claims in body | {count from claim_index where formatter_destination=body} |
+   | Claims in supplementary | {count from claim_index where formatter_destination=supplementary} |
+   | Claims in references blocks | {count from claim_index where formatter_destination=references} |
+   | Claims in tables | {count from claim_index where formatter_destination=table:*} |
+   | Claims in diagrams | {count from claim_index where formatter_destination=diagram:*} |
+   | Claims merged | {count from claim_index where formatter_destination=merged:*} |
+   | Tables added | {count from formatter_decisions.md} |
+   | Diagrams added | {count from formatter_decisions.md} |
+   | Sections at L0+L1 only | {count} |
+   | Sections at L0+L1+L2 | {count} |
+   | Routing confidence (direct_graph_match) | {count}/{total} from evidence_routing.json |
+   | Assembly overlaps resolved | {count from assembly_overlaps.md if fanout, else N/A} |
+
+   **Blocking issues:** Surface any PRES-02 violations (claims without `formatter_destination`) or CONF-01 violations (contradictions hidden) as **errors**. The user must acknowledge before proceeding to Quarto publish.
+
+   ```python
+   # GATE-3A blocking check
+   pres02_violations = [c for c in claim_index if c.get("formatter_destination") is None]
+   if pres02_violations:
+       print(f"ERROR (PRES-02): {len(pres02_violations)} claims have no formatter_destination. Review output/formatter_decisions.md before proceeding.")
+       gate3a_choice = AskUserQuestion(
+           question="PRES-02 violations found. Proceed anyway (not recommended) or abort?",
+           options=[
+               {"label": "Proceed anyway — acknowledge violation", "value": "proceed"},
+               {"label": "Abort — fix violations first", "value": "abort"},
+           ],
+           multiSelect=False,
+       )
+       if gate3a_choice == "abort":
+           update_phase_status(manifest_path, "formatting", "failed")
+           raise SystemExit("Aborted at GATE-3A due to PRES-02 violations.")
+   ```
+
+   Log: `append_log(run_dir, 'formatting', 'gate3a_shown', 'ok' if not pres02_violations else 'warn', f'GATE-3A: pres02={len(pres02_violations)} violations')`
 
 3b–4. **Install Mermaid extension, copy quarto-pdf-base.yml, and render (Phase 12 — D-04, D-09, D-21, D-22, D-25, D-27).** Run the publish script, which handles all three steps in sequence. Render failures are logged and recorded as `render_failed` but do NOT fail the phase. Never pass `-shell-escape` to `quarto render`.
    ```bash

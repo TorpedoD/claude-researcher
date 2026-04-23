@@ -1,7 +1,7 @@
 # Evidence File Contract
 
 **Artifact:** `evidence/*.md` (individual files)
-**Location:** `.research/run-NNN-TIMESTAMP/collect/evidence/`
+**Location:** `research/run-NNN-TIMESTAMP/collect/evidence/`
 **Format:** Markdown with YAML frontmatter (provenance header)
 **Producer:** research-collect
 **Consumer(s):** research-synthesize

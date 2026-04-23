@@ -7,7 +7,7 @@
 ## Directory Tree
 
 ```
-.research/run-NNN-TIMESTAMP/
+research/run-NNN-TIMESTAMP/
   manifest.json                # Run metadata, budget config, phase status
   scope/                       # Planning artifacts (added Phase 10, D-05/D-07)
     scope.md                   # Human-readable research scope
@@ -52,7 +52,7 @@ The following 9 subdirectories MUST exist within a run directory. They are creat
 ## Initialization
 
 `init_run.py` creates:
-- The run directory `.research/run-NNN-TIMESTAMP/`
+- The run directory `research/run-NNN-TIMESTAMP/`
 - `manifest.json` with run metadata, budget config, and all phases set to `pending`
 
 Subdirectories are created lazily by downstream phases on first use. This avoids creating empty directories for phases that may not execute (e.g., if a run is aborted after collection).
@@ -71,7 +71,12 @@ Subdirectories are created lazily by downstream phases on first use. This avoids
 | `synthesis/claim_index.json` | research-synthesize | orchestrator (checkpoint gate 3) |
 | `synthesis/citation_audit.md` | research-synthesize | orchestrator (checkpoint gate 3) |
 | `synthesis/gap_analysis.md` | research-synthesize | orchestrator (gap-fill decision) |
+| `synthesis/citation_registry.json` | orchestrator (pre-synthesis) | Frozen global `[N]`→URL mapping built from inventory.json |
+| `synthesis/evidence_routing.json` | orchestrator (pre-synthesis) | Per-evidence-file cluster assignments with routing_confidence |
+| `synthesis/density_hints.json` | research-formatter | Per-section advisory hints from density_scan.py |
+| `synthesis/assembly_overlaps.md` | research-synthesizer (assemble mode) | Fan-out runs only: duplicate subsections resolved, cross-ref repairs |
 | `output/report.md` | research-format | End user |
 | `output/report.qmd` | research-format | Quarto rendering |
+| `output/formatter_decisions.md` | research-formatter | Audit log of claim movements, table/diagram decisions |
 | `checkpoints/*` | research-orchestrator | research-orchestrator (resume) |
 | `logs/run_log.md` | research-orchestrator | End user (audit trail) |

@@ -1,7 +1,7 @@
 # coverage_matrix.md Contract
 
 **Artifact:** `coverage_matrix.md`
-**Location:** `.research/run-NNN-TIMESTAMP/collect/coverage_matrix.md`
+**Location:** `research/run-NNN-TIMESTAMP/collect/coverage_matrix.md`
 **Format:** Markdown
 **Producer:** research-collect
 **Consumer(s):** research-orchestrator (checkpoint gate 2)

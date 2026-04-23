@@ -1,7 +1,7 @@
 # raw_research.md Contract
 
 **Artifact:** `raw_research.md`
-**Location:** `.research/run-NNN-TIMESTAMP/synthesis/raw_research.md`
+**Location:** `research/run-NNN-TIMESTAMP/synthesis/raw_research.md`
 **Format:** Markdown
 **Producer:** research-synthesize
 **Consumer(s):** research-format (downstream), research-orchestrator (checkpoint gate 3)
@@ -9,6 +9,43 @@
 ## Purpose
 
 Citation-rich first-pass research synthesis produced from collected evidence. Structured by graph communities with inline citations at the claim level. This is the primary research output before formatting and polishing.
+
+Raw research is **completeness-first, not readability-first**. Facts are grouped predictably by topic/subtopic and ordered locally per ORDER-01, but prose flow and textblock sizing are NOT required. The research-format skill (downstream) owns readability.
+
+## Evidence Completeness
+
+The synthesizer must enumerate ALL substantive facts found in cluster-relevant evidence:
+- Every distinct fact, number, version string, procedure step, comparative data point, edge case, and claim must be captured
+- Each fact carries a global `[N](url)` citation
+- No fact from evidence files may be dropped for brevity or readability
+
+## Stable Local Ordering (ORDER-01)
+
+Within each `###` subsection, emit facts in this canonical order:
+1. Definition / identity
+2. Mechanism / process
+3. Data / versions / numbers
+4. Comparisons
+5. Implications / tradeoffs
+6. Contradictions / open questions
+
+Missing buckets are skipped. This keeps raw research dense but structurally predictable.
+
+## Claim-Level Preservation (PRES-01)
+
+Each entry in `claim_index.json` includes a `formatter_destination` field (initially `null`) populated by the formatter agent. Valid values:
+- `"body"` — surfaced in body prose
+- `"supplementary"` — moved to `### Supplementary Findings` within the section
+- `"references"` — moved to `### Section References` block
+- `"merged:<claim_hash>"` — merged with equivalent claim
+- `"table:<table_id>"` — collapsed into a table cell
+- `"diagram:<mermaid_id>"` — surfaced via diagram
+
+PRES-02: No claim may have a null `formatter_destination` after formatting completes.
+
+## Citation Dedup Rule
+
+Multiple facts in the same `##` section citing the same URL: cite `[N](url)` at each distinct claim. Same URL cited twice for the same claim → deduplicate. Each URL must be cited ≥1× per `##` section it appears in.
 
 ## Sections
 

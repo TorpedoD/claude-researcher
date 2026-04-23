@@ -9,7 +9,14 @@ Checks markdown output against 5 machine-verifiable rules:
   MERM-01 — Mermaid blocks must have <!-- mermaid: N nodes --> comment with N ≤ 15 (Phase 12 D-23, D-24)
 
 Usage:
-    python3 check_content_rules.py <path-to-markdown.md>
+    python3 check_content_rules.py [--target=raw|report] [--claim-index=<path>] <path-to-markdown.md>
+
+Options:
+    --target=raw     Skip CONS-02 and HIER-04 checks (raw_research.md is exempt from readability rules).
+                     Runs only CONS-01, RULE-02, MERM-01.
+    --target=report  Run all checks as normal (default). If --claim-index is also provided,
+                     subprocess-calls coverage_audit.py to check PRES-02 claim destinations.
+    --claim-index=<path>  Path to claim_index.json. Only used when --target=report.
 
 Exit codes:
     0 = pass (no violations)
@@ -40,12 +47,13 @@ Section definition: content between one ## heading and the next ## heading.
 sentence/word counts. CONS-01 applies to BOTH ## and ### headings.
 
 Path traversal policy: literal '..' in argv[1] parts is rejected. Absolute paths
-to any location on the filesystem are accepted (fixtures live outside .research/).
+to any location on the filesystem are accepted (fixtures live outside research/).
 
-Stdlib-only: re, json, sys, pathlib. No third-party dependencies.
+Stdlib-only: re, json, sys, pathlib, subprocess. No third-party dependencies.
 """
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -68,8 +76,13 @@ MERMAID_NODE_CAP = 15
 # ---------------------------------------------------------------------------
 # Scanner
 # ---------------------------------------------------------------------------
-def scan(md_path: Path) -> dict:
+def scan(md_path: Path, target: str = "report") -> dict:
     """Scan a markdown file and return violations dict.
+
+    Args:
+        md_path: Path to the markdown file to scan.
+        target: "raw" skips CONS-02 and HIER-04 (raw_research.md is exempt from
+                readability rules). "report" runs all checks (default).
 
     Returns the result dict with 'status', 'file', 'violations', 'summary'.
     """
@@ -94,36 +107,41 @@ def scan(md_path: Path) -> dict:
     in_section_refs = False                 # True while inside a ### Section References block
     pending_mermaid_node_count = None       # int | None — N from <!-- mermaid: N nodes --> on prior line
 
-    def _close_h2_section():
-        """Emit CONS-02 violations for the section just completed."""
+    def _close_h2_section(target: str = "report"):
+        """Emit CONS-02 violations for the section just completed.
+
+        When target='raw', CONS-02 checks are skipped (raw_research.md is exempt
+        from readability rules per content_rules.md CONS-02 scope annotation).
+        """
         nonlocal acc_text, section_urls
         if current_h2_line is None:
             return
 
-        # CONS-02 min sentences
-        sentence_count = len(SENTENCE_END_RE.findall(acc_text))
-        if sentence_count < 2:
-            violations.append({
-                "rule": "CONS-02",
-                "line": current_h2_line,
-                "severity": "warn",
-                "detail": f"Section has <2 sentences (found {sentence_count})",
-            })
+        if target != "raw":
+            # CONS-02 min sentences
+            sentence_count = len(SENTENCE_END_RE.findall(acc_text))
+            if sentence_count < 2:
+                violations.append({
+                    "rule": "CONS-02",
+                    "line": current_h2_line,
+                    "severity": "warn",
+                    "detail": f"Section has <2 sentences (found {sentence_count})",
+                })
 
-        # CONS-02 800-word advisory
-        word_count = len(acc_text.split())
-        if word_count > WORD_GUIDANCE:
-            violations.append({
-                "rule": "CONS-02",
-                "line": current_h2_line,
-                "severity": "info",
-                "detail": (
-                    f"Section exceeds {WORD_GUIDANCE} words ({word_count} words); "
-                    "consider adding subsection splits"
-                ),
-            })
+            # CONS-02 800-word advisory
+            word_count = len(acc_text.split())
+            if word_count > WORD_GUIDANCE:
+                violations.append({
+                    "rule": "CONS-02",
+                    "line": current_h2_line,
+                    "severity": "info",
+                    "detail": (
+                        f"Section exceeds {WORD_GUIDANCE} words ({word_count} words); "
+                        "consider adding subsection splits"
+                    ),
+                })
 
-        # RULE-02 URL cap
+        # RULE-02 URL cap (applies to both raw and report)
         for url, count in section_urls.items():
             if count > URL_CAP:
                 violations.append({
@@ -152,8 +170,8 @@ def scan(md_path: Path) -> dict:
             lang = fence_match.group(2)
             if not in_fence:
                 # Opening fence
-                if lang == "":
-                    # HIER-04: bare opening fence
+                if lang == "" and target != "raw":
+                    # HIER-04: bare opening fence (skipped for raw target)
                     violations.append({
                         "rule": "HIER-04",
                         "line": i,
@@ -215,7 +233,7 @@ def scan(md_path: Path) -> dict:
 
             # If this is an H2, close the previous H2 section and start a new one
             if is_h2:
-                _close_h2_section()
+                _close_h2_section(target)
                 # Reset section state
                 section_urls = {}
                 acc_text = ""
@@ -246,7 +264,7 @@ def scan(md_path: Path) -> dict:
             "detail": "Heading has no content body (end of file)",
         })
 
-    _close_h2_section()
+    _close_h2_section(target)
 
     # Build summary
     by_rule: dict = {"HIER-04": 0, "RULE-02": 0, "CONS-01": 0, "CONS-02": 0, "MERM-01": 0}
@@ -272,16 +290,48 @@ def scan(md_path: Path) -> dict:
 # Entry point
 # ---------------------------------------------------------------------------
 def main():
-    """CLI entry point."""
-    if len(sys.argv) != 2:
+    """CLI entry point.
+
+    Usage:
+        check_content_rules.py [--target=raw|report] [--claim-index=<path>] <file.md>
+
+    --target=raw    Skip CONS-02 and HIER-04; run only CONS-01, RULE-02, MERM-01.
+    --target=report Run all checks (default, backward-compatible).
+    --claim-index   Path to claim_index.json; when provided with --target=report,
+                    subprocess-calls coverage_audit.py to check PRES-02.
+    """
+    args = sys.argv[1:]
+
+    # Parse --target and --claim-index flags; remaining arg is the file path.
+    scan_target = "report"   # default: backward-compatible
+    claim_index_path = None
+    positional = []
+
+    for arg in args:
+        if arg.startswith("--target="):
+            val = arg.split("=", 1)[1]
+            if val not in ("raw", "report"):
+                print(json.dumps({
+                    "status": "error",
+                    "detail": f"--target must be 'raw' or 'report', got: {val!r}",
+                    "file": "",
+                }))
+                sys.exit(2)
+            scan_target = val
+        elif arg.startswith("--claim-index="):
+            claim_index_path = arg.split("=", 1)[1]
+        else:
+            positional.append(arg)
+
+    if len(positional) != 1:
         print(json.dumps({
             "status": "error",
-            "detail": "usage: check_content_rules.py <file.md>",
+            "detail": "usage: check_content_rules.py [--target=raw|report] [--claim-index=<path>] <file.md>",
             "file": "",
         }))
         sys.exit(2)
 
-    raw_arg = sys.argv[1]
+    raw_arg = positional[0]
     raw_path = Path(raw_arg)
 
     # Reject literal '..' in the provided path parts (before resolving)
@@ -293,25 +343,48 @@ def main():
         }))
         sys.exit(2)
 
-    target = raw_path.expanduser().resolve()
+    md_file = raw_path.expanduser().resolve()
 
-    if not target.exists() or not target.is_file():
+    if not md_file.exists() or not md_file.is_file():
         print(json.dumps({
             "status": "error",
-            "detail": f"file not found: {target}",
-            "file": str(target),
+            "detail": f"file not found: {md_file}",
+            "file": str(md_file),
         }))
         sys.exit(2)
 
-    if target.stat().st_size > MAX_FILE_BYTES:
+    if md_file.stat().st_size > MAX_FILE_BYTES:
         print(json.dumps({
             "status": "error",
             "detail": f"file exceeds {MAX_FILE_BYTES} bytes (ReDoS guard)",
-            "file": str(target),
+            "file": str(md_file),
         }))
         sys.exit(2)
 
-    result = scan(target)
+    result = scan(md_file, target=scan_target)
+
+    # --target=report + --claim-index: also run coverage_audit.py for PRES-02
+    if scan_target == "report" and claim_index_path:
+        coverage_audit = Path.home() / ".claude/skills/research-format/scripts/coverage_audit.py"
+        if coverage_audit.exists():
+            audit_result = subprocess.run(
+                ["python3", str(coverage_audit), "--claim-index", claim_index_path],
+                capture_output=True,
+                text=True,
+            )
+            if audit_result.returncode != 0:
+                # Append a PRES-02 violation summary to the result
+                result["violations"].append({
+                    "rule": "PRES-02",
+                    "line": 0,
+                    "severity": "warn",
+                    "detail": f"coverage_audit.py exited {audit_result.returncode}: {audit_result.stdout[:200].strip()}",
+                })
+                result["summary"]["by_rule"]["PRES-02"] = result["summary"]["by_rule"].get("PRES-02", 0) + 1
+                result["summary"]["by_severity"]["warn"] = result["summary"]["by_severity"].get("warn", 0) + 1
+                result["summary"]["total"] = len(result["violations"])
+                result["status"] = "warn"
+
     print(json.dumps(result, indent=2))
     sys.exit(0 if result["status"] == "pass" else 1)
 

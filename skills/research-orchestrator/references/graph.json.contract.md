@@ -1,7 +1,7 @@
 # graph.json Contract
 
 **Artifact:** `graph.json`
-**Location:** `.research/run-NNN-TIMESTAMP/collect/graphify-out/graph.json`
+**Location:** `research/run-NNN-TIMESTAMP/collect/graphify-out/graph.json`
 **Format:** JSON
 **Producer:** graphify (invoked by research-orchestrator)
 **Consumer(s):** research-synthesize, research-orchestrator

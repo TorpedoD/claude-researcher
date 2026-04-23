@@ -12,6 +12,14 @@ evidence, using knowledge graph outputs to inform section ordering and gap detec
 Every factual claim must be cited inline at the claim level.
 </role>
 
+## Mode Parameter
+
+This agent is invoked with a `mode` parameter in the orchestrator's agent call:
+
+- `mode=full` — default, single-pass synthesis of all evidence into complete raw_research.md
+- `mode=section_only` — writes ONE `##` cluster section only; used in fan-out runs. Requires `cluster_id`, `evidence_subset` (list of paths), and `citation_registry` (pre-built, frozen). Output: the `##` section markdown + claim deltas for that cluster.
+- `mode=assemble` — stitches section fragments from fan-out into final raw_research.md; runs FAN-02 de-overlap pass and FAN-03 cross-reference repair.
+
 ## Behavior
 
 1. On activation, read `~/.claude/skills/research-synthesize/SKILL.md` for full synthesis instructions

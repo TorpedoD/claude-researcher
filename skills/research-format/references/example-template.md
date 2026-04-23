@@ -307,3 +307,81 @@ flowchart LR
 > **Sources:** [L2Beat](https://l2beat.com), [Ethereum docs](https://ethereum.org)
 
 No Detailed Findings, no per-section sources block, single inline source line at the end.
+
+---
+
+## Example: L0/L1/L2 Information Levels
+
+The following shows how a dense raw_research section gets formatted into the three information levels.
+
+### Raw Research Input (completeness-first)
+
+```
+## Consensus Mechanisms
+
+Central concept: **Raft Consensus**.
+
+### Definition / identity
+Raft is a consensus algorithm designed to be more understandable than Paxos [1](url1). It decomposes consensus into three subproblems: leader election, log replication, and safety [1](url1). Introduced by Ongaro and Ousterhout at USENIX ATC 2014 [2](url2). Version used in etcd 3.x and CockroachDB [3](url3).
+
+### Mechanism / process
+Leader election uses randomized timeouts (150–300 ms default) to prevent split votes [1](url1). Candidates request votes from all peers [1](url1). A node wins when it receives votes from a majority [2](url2). Log replication: leader appends entry, sends AppendEntries RPC to all followers [1](url1). Entry committed when majority acknowledge [1](url1). Followers apply committed entries to state machine [3](url3).
+
+### Data / versions / numbers
+Default election timeout: 150–300 ms [1](url1). etcd production recommendation: 500 ms–2 s for LAN [3](url3). Edge deployment recommendation: 750 ms–5 s for high-latency links [4](url4). Heartbeat interval: 1/10th of election timeout [1](url1). Log entries include term number, index, command [2](url2).
+
+### Comparisons
+Raft vs Paxos: Raft assigns strict leader role, Paxos allows any node to propose [2](url2). Raft is considered 2.1× easier to implement than Paxos by Ongaro's study [2](url2). etcd uses Raft; ZooKeeper uses ZAB (Raft-like) [3](url3).
+
+### Implications / tradeoffs
+Strong consistency at the cost of availability during leader failure (~election timeout) [1](url1). Leader bottleneck under high write load [4](url4). Pipeline replication reduces latency by 40% in production [3](url3).
+```
+
+### Formatted Output (Full Report mode, external audience)
+
+```markdown
+## Consensus Mechanisms
+
+**Raft achieves distributed consensus through leader-based log replication, offering strong consistency at the cost of brief unavailability during leader failure.**
+
+### Short Summary
+
+Raft decomposes consensus into leader election, log replication, and safety guarantees. A leader is elected via randomized timeouts to prevent split votes, then replicates log entries to followers, committing only when a majority acknowledges. Raft's strict leader model simplifies implementation compared to Paxos at the cost of a write-throughput bottleneck.
+
+### Key Points
+
+- Default election timeout: 150–300 ms; etcd production recommendation: 500 ms–2 s [1](url1)
+- A candidate wins election on majority vote; commits require majority acknowledgment [1](url1)
+- Raft is 2.1× easier to implement than Paxos by Ongaro's study [2](url2)
+- Leader bottleneck under high write load; pipelining reduces latency by ~40% [3](url3)
+- Edge deployments recommend 750 ms–5 s election timeout for high-latency links [4](url4)
+
+### Consensus Algorithm Comparison (L2 — prompted by strong table hint)
+
+| Property | Raft | Paxos | ZAB (ZooKeeper) |
+|----------|------|-------|-----------------|
+| Proposer | Leader only | Any node | Leader only |
+| Understandability | High (by design) | Low | Medium |
+| Used in | etcd, CockroachDB | Google Chubby | ZooKeeper |
+| Election timeout (LAN) | 150–300 ms | varies | N/A |
+
+[1](url1) [2](url2) [3](url3)
+
+### Detailed Findings (L2)
+
+Raft was introduced by Ongaro and Ousterhout at USENIX ATC 2014 as an alternative to Paxos designed for understandability [2](url2). It is used in etcd 3.x and CockroachDB [3](url3). The heartbeat interval is 1/10th of the election timeout [1](url1). Log entries contain term number, index, and command [2](url2). Pipeline replication in production reduces latency by approximately 40% [3](url3).
+
+### Section References
+
+[1](url1) — etcd Documentation
+[2](url2) — In Search of an Understandable Consensus Algorithm (Ongaro)
+[3](url3) — CockroachDB Architecture Guide
+[4](url4) — Edge Consensus Deployment Guide
+```
+
+**Formatting decisions made:**
+- Numeric comparisons (5 timeout values across 3 systems) → `strong` table hint honored → produced comparison table
+- All 5 Key Points surfaced in L1 with citations
+- Preamble (bold sentence) = L0
+- Detailed findings (term numbers, heartbeat ratio, pipeline %) = L2
+- No claims dropped; all citations preserved

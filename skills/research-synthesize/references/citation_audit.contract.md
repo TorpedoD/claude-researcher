@@ -1,7 +1,7 @@
 # citation_audit.md Contract
 
 **Artifact:** `citation_audit.md`
-**Location:** `.research/run-NNN-TIMESTAMP/synthesis/citation_audit.md`
+**Location:** `research/run-NNN-TIMESTAMP/synthesis/citation_audit.md`
 **Format:** Markdown
 **Producer:** research-synthesize
 

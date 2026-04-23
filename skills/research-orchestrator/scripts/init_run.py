@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Research pipeline run initialization.
 
-Creates .research/run-NNN-TIMESTAMP/ with manifest.json.
+Creates research/run-NNN-TIMESTAMP/ with manifest.json.
 Detects and offers resume of interrupted runs.
 
 Both importable (for Phase 1 orchestrator) and CLI-invocable.
@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-RESEARCH_ROOT = Path(".research")
+RESEARCH_ROOT = Path("research")
 COUNTER_FILE = RESEARCH_ROOT / ".run-counter"
 
 DETECT_RUNTIME = (
@@ -206,7 +206,7 @@ def update_phase_status(manifest_path: Path, phase: str, status: str) -> dict:
 
 
 def find_interrupted_runs(research_root: Optional[Path] = None) -> list:
-    """Scan .research/ for runs with 'running' or 'failed' phases.
+    """Scan research/ for runs with 'running' or 'failed' phases.
 
     Args:
         research_root: Override for RESEARCH_ROOT (used by tests).
@@ -385,6 +385,15 @@ def main():
         recommended["docling_parallelism"] = args.docling_parallelism
     if args.fixture_dir is not None:
         recommended["fixture_dir"] = args.fixture_dir
+
+    # New collection pipeline fields
+    _default_cache = str(Path.home() / ".cache" / "research-collect" / "docling")
+    recommended["docling_cache_dir"] = os.environ.get("RESEARCH_CACHE_DIR", _default_cache)
+    recommended["docling_format_whitelist"] = [".pdf", ".docx", ".pptx", ".xlsx"]
+    recommended["crawl_user_agent_mode"] = "random" if perf_mode == "aggressive" else "http"
+    recommended["honor_retry_after"] = True
+    recommended["referer_policy"] = "same_site_only"
+    recommended["backoff_min_dwell_seconds"] = 30
 
     # Embed into runtime_profile.resolved
     runtime_profile["resolved"] = recommended
