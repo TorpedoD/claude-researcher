@@ -98,11 +98,10 @@ URLs appearing inside a `### Section References` block do NOT count toward the R
 - **Severity**: warn
 - **Checker**: manual diff or scripted grep
 
-## Legacy raw-research coverage
+## Legacy Coverage Helpers
 
-`coverage_audit.py`, `synthesis/claim_index.json`, and
-`synthesis/citation_registry.json` are legacy raw-research mechanisms. They are
-not used by `claim_pipeline_v1` report composition.
+`coverage_audit.py` and old registry/index artifacts are deprecated helper
+mechanisms. They are not used by `claim_pipeline_v1` report composition.
 
 ## Invocation
 

@@ -1,11 +1,10 @@
 {
   "section_id": "consensus",
   "section_brief_path": "synthesis/section_briefs/consensus.json",
-  "claims": [
+  "required_claims": [
     {
       "id": "claim_001",
       "text": "Cardano uses Ouroboros as its proof-of-stake consensus protocol.",
-      "content_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       "primary_section_id": "consensus",
       "source_ids": ["src_001"],
       "confidence": "high",
@@ -13,7 +12,18 @@
       "include_in_report": true
     }
   ],
-  "sources": [
+  "optional_claims": [
+    {
+      "id": "claim_002",
+      "brief": "Ouroboros is documented in published research.",
+      "primary_section_id": "consensus",
+      "source_ids": ["src_001"],
+      "confidence": "medium",
+      "salience": "low",
+      "include_in_report": false
+    }
+  ],
+  "source_records": [
     {
       "source_id": "src_001",
       "title": "Example Source",

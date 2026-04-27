@@ -81,7 +81,8 @@ shell out to `crwl crawl` per URL — that path is serial and has been retired.
   {"input_index": 0, "seed_index": null, "seed_url": null,
    "url": "...", "final_url": "...", "title": "...", "markdown": "...",
    "metadata": {...}, "links": {"internal": [...], "external": [...]},
-   "depth": 0, "success": true, "error": null}
+   "depth": 0, "success": true, "error": null,
+   "docling_candidate_urls": ["https://example.com/paper.pdf"]}
   ```
 
 ### 1. Seed URL Generation
@@ -120,6 +121,8 @@ For Tier-2/3 targets and any list of single URLs:
    - Write `collect/evidence/web-{NNN}-{slug}.md` (or `collect/quarantine/` for quarantined)
      with the full YAML provenance header prepended to the `markdown` body.
    - Append the source to `inventory.json` (non-quarantined only).
+   - Add any `docling_candidate_urls` from non-quarantined records to
+     `collect/_staging/doc_batch.txt` for the document parsing step.
    - Records with `success: false` go to `collection_log.md` Errors section, not evidence.
 
 ### 3. Deep-Crawl Seed Batch
@@ -142,8 +145,9 @@ parallel** with each seed expanding internally:
      --cache enabled \
      > collect/_staging/deep_batch.jsonl
    ```
-3. Post-process identically to flat mode (quarantine → dedup → {NNN} → provenance).
-   Records carry `seed_url` so coverage_matrix.md can trace pages back to their seed.
+3. Post-process identically to flat mode (quarantine → dedup → document-link
+   queueing → {NNN} → provenance). Records carry `seed_url` so
+   coverage_matrix.md can trace pages back to their seed.
 
 ### 4. Budget Enforcement
 
@@ -183,7 +187,13 @@ Log `success: false` records to `collection_log.md`, skip the evidence write, co
 
 > **No auto-install.** If `docling` import fails, `parallel_docling.py` emits a Gate-1 remediation block and exits 1. Never run install commands from within the pipeline. See research-orchestrator SKILL.md "Dependency install policy".
 
-Use `scripts/parallel_docling.py` (SDK-driven, persistent `DocumentConverter` per worker) for all document collection. Do NOT use `xargs -P docling` — the SDK path is faster (models load once per worker), caches results, and produces richer provenance.
+Use `scripts/parallel_docling.py` (SDK-driven, persistent `DocumentConverter` per worker) for all document collection. The SDK path loads models once per worker, caches results, and produces richer provenance.
+
+Web crawl records include `docling_candidate_urls` for linked documents such as
+PDF, DOCX, PPTX, and XLSX files discovered in page links or markdown links.
+Collectors must append these URLs to the document batch so pages like the
+Cardano research-papers index also parse the linked papers/specs through
+Docling.
 
 ### 1. Format Gate
 
@@ -213,7 +223,7 @@ printf '%s\n' "${doc_paths[@]}" > collect/_staging/doc_batch.txt
     > collect/_staging/docling_out.jsonl
 ```
 
-If `parallel_docling.py` exits 1 with a Gate-1 remediation block, surface it to the user and stop. Never fall back to `xargs -P docling`.
+If `parallel_docling.py` exits 1 with a Gate-1 remediation block, surface it to the user and stop.
 
 ### 3. Content-Hash Cache
 

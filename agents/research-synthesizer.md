@@ -19,8 +19,7 @@ The orchestrator may invoke this agent with one of these modes:
 - `mode=claim_batch` -- extract claim deltas for one source, one planned section,
   or one evidence batch. Output only `synthesis/claim_deltas/*.json`.
 - `mode=merge_claims` -- run/coordinate merge validation and produce
-  `global_id_registry.json`, `claim_bank.json`, and optional compatibility
-  `claim_index.json`.
+  `global_id_registry.json`, `claim_bank.json`, and `entity_index.json`.
 - `mode=graph_relationships` -- produce `claim_graph_map.json` and
   `section_graph_hints.json`.
 - `mode=section_briefs` -- produce `section_briefs/*.json`,
@@ -44,7 +43,7 @@ Read only what the mode requires:
 - `collect/inventory.json`
 - selected `collect/evidence/*.md` files for the active batch
 - `synthesis/claim_bank.json` after claim extraction
-- compact Graphify JSON diagnostics when generating graph metadata
+- `synthesis/entity_index.json` when generating graph metadata
 
 For large runs, do not read all evidence into one context. Extract per source,
 per planned section, or per evidence batch and merge claim deltas.
@@ -60,16 +59,13 @@ per planned section, or per evidence batch and merge claim deltas.
 
 - `synthesis/global_id_registry.json`
 - `synthesis/claim_bank.json`
+- `synthesis/entity_index.json`
 - `synthesis/claim_graph_map.json`
 - `synthesis/section_graph_hints.json`
 - `synthesis/section_briefs/<section_id>.json`
 - `synthesis/claim_slices/<section_id>.json`
 - `synthesis/citation_audit.md`
 - `synthesis/gap_analysis.md`
-
-Compatibility-only:
-
-- `synthesis/claim_index.json`, derived from `claim_bank.json` if old consumers need it.
 
 Optional diagnostics:
 

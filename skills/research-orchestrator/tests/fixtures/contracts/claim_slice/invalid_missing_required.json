@@ -1,6 +1,7 @@
 {
   "section_brief_path": "synthesis/section_briefs/consensus.json",
-  "claims": [],
-  "sources": [],
+  "required_claims": [],
+  "optional_claims": [],
+  "source_records": [],
   "boundary_rules": ["missing section_id"]
 }

@@ -7,11 +7,13 @@
 
 ## Purpose
 
-Provides a single section agent with only the claim and source records it needs.
+Provides a single section agent with a compact self-contained packet. Required
+claims carry full text; optional claims carry briefs and routing metadata.
 
 ## Rules
 
 - Contains exactly one `section_id`.
+- Contains `required_claims`, `optional_claims`, and `source_records`.
 - Contains only claims assigned to, or explicitly referenced by, that section.
 - Contains only source records referenced by those claims.
 - Includes `boundary_rules` so cross-section reuse is a reference, not a rewritten explanation.

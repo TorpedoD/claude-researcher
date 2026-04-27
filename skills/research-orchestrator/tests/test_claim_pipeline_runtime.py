@@ -127,6 +127,7 @@ def test_batch_claim_deltas_merge_and_dedupe_by_content_hash(tmp_path):
     claim_bank = claim_pipeline.merge_claim_deltas(run_dir)
 
     assert claim_bank["metadata"]["total_claims"] == 1
+    assert not (run_dir / "synthesis" / "claim_index.json").exists()
     claim = claim_bank["claims"][0]
     assert claim["id"] == "claim_001"
     assert claim["primary_section_id"] == consensus_id
@@ -155,12 +156,21 @@ def test_gate3_readiness_fails_section_without_claims_or_missing_reason(tmp_path
         },
     )
     claim_pipeline.merge_claim_deltas(run_dir)
+    claim_pipeline.build_entity_index(run_dir)
     claim_pipeline.build_graph_artifacts(run_dir)
     claim_pipeline.build_section_artifacts(run_dir)
 
     result = claim_pipeline.validate_readiness(run_dir)
+    claim_slice = json.loads(
+        (run_dir / "synthesis" / "claim_slices" / f"{consensus_id}.json").read_text()
+    )
 
     assert result["status"] == "fail"
+    assert "required_claims" in claim_slice
+    assert "optional_claims" in claim_slice
+    assert "source_records" in claim_slice
+    assert "claims" not in claim_slice
+    assert "content_hash" not in claim_slice["required_claims"][0]
     assert any("no claims and no explicit missing evidence reason" in e for e in result["errors"])
 
 
@@ -199,13 +209,16 @@ def test_gate3_readiness_passes_when_empty_section_has_missing_reason(tmp_path):
         },
     )
     claim_pipeline.merge_claim_deltas(run_dir)
+    entity_index = claim_pipeline.build_entity_index(run_dir)
     claim_pipeline.build_graph_artifacts(run_dir)
     claim_pipeline.build_section_artifacts(run_dir)
 
     result = claim_pipeline.validate_readiness(run_dir)
 
     assert result == {"status": "pass", "errors": [], "warnings": []}
+    assert entity_index["metadata"]["schema_version"] == "entity_index.v1"
     assert not (run_dir / "synthesis" / "raw_research.md").exists()
+    assert not (run_dir / "synthesis" / "claim_index.json").exists()
 
 
 def test_graph_hints_cannot_reference_unplanned_sections(tmp_path):
@@ -230,6 +243,7 @@ def test_graph_hints_cannot_reference_unplanned_sections(tmp_path):
         },
     )
     claim_pipeline.merge_claim_deltas(run_dir)
+    claim_pipeline.build_entity_index(run_dir)
     claim_pipeline.build_graph_artifacts(run_dir)
     claim_pipeline.build_section_artifacts(run_dir)
     hints = json.loads((run_dir / "synthesis" / "section_graph_hints.json").read_text())
@@ -240,6 +254,48 @@ def test_graph_hints_cannot_reference_unplanned_sections(tmp_path):
 
     assert result["status"] == "fail"
     assert any("unplanned sections" in e for e in result["errors"])
+
+
+def test_graph_artifacts_do_not_read_raw_evidence_default_path(tmp_path, monkeypatch):
+    claim_pipeline = load_claim_pipeline()
+    run_dir = make_run(tmp_path)
+    registry = claim_pipeline.init_registry(run_dir)
+    consensus_id = registry["section_ids"]["consensus mechanism"]
+
+    write_json(
+        run_dir / "synthesis" / "claim_deltas" / "batch-001.json",
+        {
+            "claims": [
+                {
+                    "text": "The protocol uses stake-weighted leader selection.",
+                    "primary_section_id": consensus_id,
+                    "source_ids": ["src_001"],
+                    "confidence": "high",
+                    "salience": "high",
+                    "include_in_report": True,
+                    "entities": ["staking"],
+                }
+            ]
+        },
+    )
+    claim_pipeline.merge_claim_deltas(run_dir)
+    claim_pipeline.build_entity_index(run_dir)
+    evidence_path = run_dir / "collect" / "evidence" / "poison.md"
+    evidence_path.write_text("Graph construction must not read this file.")
+
+    original_read_text = Path.read_text
+
+    def guarded_read_text(self, *args, **kwargs):
+        if self == evidence_path:
+            raise AssertionError("graph builder read raw evidence")
+        return original_read_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", guarded_read_text)
+
+    claim_graph_map, section_graph_hints = claim_pipeline.build_graph_artifacts(run_dir)
+
+    assert claim_graph_map["claims"][0]["entities"] == ["staking"]
+    assert section_graph_hints["planned_section_ids"]
 
 
 def test_gate3_readiness_fails_schema_invalid_artifact(tmp_path):
@@ -277,6 +333,7 @@ def test_gate3_readiness_fails_schema_invalid_artifact(tmp_path):
         },
     )
     claim_pipeline.merge_claim_deltas(run_dir)
+    claim_pipeline.build_entity_index(run_dir)
     claim_pipeline.build_graph_artifacts(run_dir)
     claim_pipeline.build_section_artifacts(run_dir)
 

@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "entity_index.schema.json",
+  "title": "Entity Index",
+  "description": "Entity-to-claim lookup extracted during claim/entity synthesis.",
+  "type": "object",
+  "required": ["entities", "metadata"],
+  "properties": {
+    "entities": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["entity", "normalized", "claim_ids", "section_ids", "source_ids"],
+        "properties": {
+          "entity": {"type": "string", "minLength": 1},
+          "normalized": {"type": "string", "minLength": 1},
+          "claim_ids": {
+            "type": "array",
+            "items": {"type": "string", "pattern": "^claim_[0-9]{3,}$"},
+            "minItems": 1,
+            "uniqueItems": true
+          },
+          "section_ids": {
+            "type": "array",
+            "items": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]*$"},
+            "minItems": 1,
+            "uniqueItems": true
+          },
+          "source_ids": {
+            "type": "array",
+            "items": {"type": "string", "pattern": "^src_[0-9]{3,}$"},
+            "minItems": 1,
+            "uniqueItems": true
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "required": ["total_entities", "schema_version"],
+      "properties": {
+        "total_entities": {"type": "integer", "minimum": 0},
+        "schema_version": {"type": "string", "const": "entity_index.v1"}
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

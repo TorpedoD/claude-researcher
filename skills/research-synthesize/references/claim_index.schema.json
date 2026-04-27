@@ -2,20 +2,20 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "claim_index.schema.json",
   "title": "Claim Index",
-  "description": "Legacy compatibility schema. claim_bank.json is canonical in claim_pipeline_v1.",
+  "description": "Legacy compatibility schema derived from claim_bank.json on explicit request.",
   "type": "object",
   "required": ["claims", "metadata"],
   "properties": {
     "claims": {
       "type": "array",
-      "description": "Array of factual claims with supporting sources",
+      "description": "Array of derived claim references with supporting source IDs",
       "items": {
         "type": "object",
         "required": ["claim_text", "claim_hash", "section", "sources"],
         "properties": {
           "claim_text": {
             "type": "string",
-            "description": "The factual claim text as it appears in raw_research.md",
+            "description": "The factual claim text copied from claim_bank.json",
             "minLength": 1
           },
           "claim_hash": {
@@ -33,28 +33,11 @@
             "description": "Supporting sources for this claim",
             "items": {
               "type": "object",
-              "required": ["url", "source_title", "tier", "freshness"],
+              "required": ["source_id"],
               "properties": {
-                "url": {
+                "source_id": {
                   "type": "string",
-                  "description": "Source URL matching inventory.json entry",
-                  "minLength": 1
-                },
-                "source_title": {
-                  "type": "string",
-                  "description": "Source title for display",
-                  "minLength": 1
-                },
-                "tier": {
-                  "type": "integer",
-                  "description": "Source quality tier (1=official docs, 5=weak)",
-                  "minimum": 1,
-                  "maximum": 5
-                },
-                "freshness": {
-                  "type": "string",
-                  "description": "Freshness score or publication date",
-                  "minLength": 1
+                  "pattern": "^src_[0-9]{3,}$"
                 }
               },
               "additionalProperties": false
@@ -71,24 +54,17 @@
     },
     "metadata": {
       "type": "object",
-      "description": "Aggregate statistics about the claim index",
-      "required": ["total_claims", "citation_coverage_pct", "avg_sources_per_claim"],
+      "description": "Aggregate statistics about the compatibility index",
+      "required": ["total_claims", "compatibility_only"],
       "properties": {
         "total_claims": {
           "type": "integer",
           "description": "Total number of claims indexed",
           "minimum": 0
         },
-        "citation_coverage_pct": {
-          "type": "number",
-          "description": "Percentage of claims with at least one citation",
-          "minimum": 0,
-          "maximum": 100
-        },
-        "avg_sources_per_claim": {
-          "type": "number",
-          "description": "Average number of supporting sources per claim",
-          "minimum": 0
+        "compatibility_only": {
+          "type": "boolean",
+          "const": true
         }
       },
       "additionalProperties": false

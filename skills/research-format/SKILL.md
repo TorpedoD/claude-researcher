@@ -20,12 +20,12 @@ When invoked by `research-orchestrator`, use only:
 |---|---|---|
 | Format preferences | `manifest.json` | mode, audience, tone, publish preference |
 | Section briefs | `synthesis/section_briefs/<section_id>.json` | section title, summary, required claim IDs, boundaries |
-| Claim slices | `synthesis/claim_slices/<section_id>.json` | only claim text and source records available to a section |
+| Claim slices | `synthesis/claim_slices/<section_id>.json` | compact required claims, optional claim briefs, and source records available to a section |
 | Graph hints | `synthesis/section_graph_hints.json` | advisory per-section relationships only |
 
 The formatter must not read these files in the main path:
 
-- `synthesis/raw_research.md`
+- `synthesis/raw_research.md` (deprecated; not a formatter input)
 - `synthesis/claim_bank.json`
 - `collect/inventory.json`
 - full Graphify outputs
@@ -73,7 +73,7 @@ styles fail the formatter audit.
 3. Compose `output/sections/<section_id>.md`.
    - Start with `## <Section Title>`.
    - Open with a short summary.
-   - Include every `must_include_claim_id`.
+   - Include every `must_include_claim_id` from `required_claims`.
    - Include optional claims only when useful for the selected depth.
    - Preserve missing-evidence notes and contradictions.
    - Use graph hints only for central entities, cross-links, and relationship language inside the existing planned section.
@@ -81,7 +81,7 @@ styles fail the formatter audit.
 
 4. Emit `output/sections/<section_id>.meta.json`.
    - `claim_ids_used` must include all required claims used in prose, tables, or diagrams.
-   - `source_ids_used` must be a subset of the section claim slice.
+   - `source_ids_used` must be a subset of the section `source_records`.
    - `cross_links` must reference existing planned section IDs only.
    - `warnings` should record skipped optional claims, weak evidence, or unresolved overlap.
 

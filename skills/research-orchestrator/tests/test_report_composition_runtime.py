@@ -90,11 +90,10 @@ def make_run(tmp_path: Path) -> Path:
         {
             "section_id": "consensus",
             "section_brief_path": "synthesis/section_briefs/consensus.json",
-            "claims": [
+            "required_claims": [
                 {
                     "id": "claim_001",
                     "text": "Cardano uses Ouroboros as its proof-of-stake consensus protocol.",
-                    "content_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
                     "primary_section_id": "consensus",
                     "source_ids": ["src_001"],
                     "confidence": "high",
@@ -102,7 +101,8 @@ def make_run(tmp_path: Path) -> Path:
                     "include_in_report": True,
                 }
             ],
-            "sources": [
+            "optional_claims": [],
+            "source_records": [
                 {
                     "source_id": "src_001",
                     "title": "Cardano Docs",
@@ -174,6 +174,44 @@ def test_composition_fails_when_claim_slice_missing_and_does_not_fallback_to_cla
     assert "no claim_bank.json fallback is allowed" in str(exc.value)
 
 
+def test_build_plan_rejects_legacy_full_duplicate_claim_slice_shape(tmp_path):
+    composer = load_module(COMPOSER_SCRIPT, "report_composer")
+    run_dir = make_run(tmp_path)
+    write_json(
+        run_dir / "synthesis" / "claim_slices" / "consensus.json",
+        {
+            "section_id": "consensus",
+            "section_brief_path": "synthesis/section_briefs/consensus.json",
+            "claims": [
+                {
+                    "id": "claim_001",
+                    "text": "Cardano uses Ouroboros as its proof-of-stake consensus protocol.",
+                    "content_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                    "primary_section_id": "consensus",
+                    "source_ids": ["src_001"],
+                    "confidence": "high",
+                    "salience": "high",
+                    "include_in_report": True,
+                }
+            ],
+            "sources": [
+                {
+                    "source_id": "src_001",
+                    "title": "Cardano Docs",
+                    "url": "https://example.com/cardano",
+                    "tier": 1,
+                }
+            ],
+            "boundary_rules": ["legacy shape should fail"],
+        },
+    )
+
+    with pytest.raises(ValueError) as exc:
+        composer.build_plan(run_dir)
+
+    assert "uses legacy claim-slice field" in str(exc.value)
+
+
 def test_section_metadata_validates_against_schema(tmp_path):
     run_dir = make_run(tmp_path)
     write_section_outputs(run_dir)
@@ -212,11 +250,10 @@ def test_audit_flags_repeated_claim_ids_across_sections(tmp_path):
         {
             "section_id": "security",
             "section_brief_path": "synthesis/section_briefs/security.json",
-            "claims": [
+            "required_claims": [
                 {
                     "id": "claim_001",
                     "text": "Cardano uses Ouroboros as its proof-of-stake consensus protocol.",
-                    "content_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
                     "primary_section_id": "security",
                     "source_ids": ["src_001"],
                     "confidence": "high",
@@ -224,7 +261,8 @@ def test_audit_flags_repeated_claim_ids_across_sections(tmp_path):
                     "include_in_report": True,
                 }
             ],
-            "sources": [
+            "optional_claims": [],
+            "source_records": [
                 {
                     "source_id": "src_001",
                     "title": "Cardano Docs",
@@ -327,11 +365,10 @@ def test_audit_validates_report_urls_against_union_of_section_slices(tmp_path):
         {
             "section_id": "wallets",
             "section_brief_path": "synthesis/section_briefs/wallets.json",
-            "claims": [
+            "required_claims": [
                 {
                     "id": "claim_002",
                     "text": "Lace is a Cardano wallet.",
-                    "content_hash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
                     "primary_section_id": "wallets",
                     "source_ids": ["src_002"],
                     "confidence": "high",
@@ -339,7 +376,8 @@ def test_audit_validates_report_urls_against_union_of_section_slices(tmp_path):
                     "include_in_report": True,
                 }
             ],
-            "sources": [
+            "optional_claims": [],
+            "source_records": [
                 {
                     "source_id": "src_002",
                     "title": "Lace Docs",

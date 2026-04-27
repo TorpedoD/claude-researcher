@@ -93,9 +93,12 @@ def build_plan(run_dir: Path) -> dict[str, Any]:
             continue
         brief = load_json(brief_path)
         claim_slice = load_json(slice_path)
+        slice_errors = validate_claim_slice_shape(claim_slice, f"synthesis/claim_slices/{section_id}.json")
+        if slice_errors:
+            raise ValueError("; ".join(slice_errors))
         if claim_slice.get("section_id") != section_id:
             raise ValueError(f"{rel(slice_path, run_dir)} section_id does not match filename")
-        source_ids = sorted({source["source_id"] for source in claim_slice.get("sources", [])})
+        source_ids = sorted({source["source_id"] for source in sources_for_slice(claim_slice)})
         sections.append({
             "section_id": section_id,
             "title": brief["title"],
@@ -133,10 +136,46 @@ def validate_section_meta(meta_path: Path) -> list[str]:
     return schema_errors(meta, "section_meta.schema.json")
 
 
+def claims_for_slice(claim_slice: dict[str, Any]) -> list[dict[str, Any]]:
+    return (
+        list(claim_slice.get("required_claims", []))
+        + list(claim_slice.get("optional_claims", []))
+    )
+
+
+def sources_for_slice(claim_slice: dict[str, Any]) -> list[dict[str, Any]]:
+    return list(claim_slice.get("source_records", []))
+
+
+def validate_claim_slice_shape(claim_slice: dict[str, Any], context: str) -> list[str]:
+    errors: list[str] = []
+    required = {"section_id", "section_brief_path", "required_claims", "optional_claims", "source_records", "boundary_rules"}
+    missing = sorted(required - set(claim_slice))
+    if missing:
+        errors.append(f"{context} missing compact claim-slice field(s): {missing}")
+    legacy = sorted({"claims", "sources"} & set(claim_slice))
+    if legacy:
+        errors.append(f"{context} uses legacy claim-slice field(s): {legacy}")
+
+    for claim in claim_slice.get("required_claims", []):
+        claim_id = claim.get("id", "<unknown>")
+        if "text" not in claim:
+            errors.append(f"{context} required_claim {claim_id} is missing text")
+        if "content_hash" in claim:
+            errors.append(f"{context} required_claim {claim_id} duplicates content_hash")
+    for claim in claim_slice.get("optional_claims", []):
+        claim_id = claim.get("id", "<unknown>")
+        if "brief" not in claim:
+            errors.append(f"{context} optional_claim {claim_id} is missing brief")
+        if "text" in claim or "content_hash" in claim:
+            errors.append(f"{context} optional_claim {claim_id} is not compact")
+    return errors
+
+
 def source_maps_for_slice(claim_slice: dict[str, Any]) -> tuple[set[str], set[str], dict[str, str]]:
-    claim_ids = {claim["id"] for claim in claim_slice.get("claims", [])}
-    source_ids = {source["source_id"] for source in claim_slice.get("sources", [])}
-    url_to_title = {source["url"]: source["title"] for source in claim_slice.get("sources", [])}
+    claim_ids = {claim["id"] for claim in claims_for_slice(claim_slice)}
+    source_ids = {source["source_id"] for source in sources_for_slice(claim_slice)}
+    url_to_title = {source["url"]: source["title"] for source in sources_for_slice(claim_slice)}
     return claim_ids, source_ids, url_to_title
 
 
@@ -204,6 +243,7 @@ def audit(run_dir: Path) -> dict[str, Any]:
 
         brief = load_json(brief_path)
         claim_slice = load_json(slice_path)
+        errors.extend(validate_claim_slice_shape(claim_slice, section["claim_slice_path"]))
         meta = load_json(meta_path)
         slice_claim_ids, slice_source_ids, allowed_url_to_title = source_maps_for_slice(claim_slice)
 
@@ -298,7 +338,7 @@ def assemble(run_dir: Path) -> Path:
         meta = load_json(meta_path)
         used_source_ids |= set(meta.get("source_ids_used", []))
         claim_slice = load_json(run_dir / section["claim_slice_path"])
-        for source in claim_slice.get("sources", []):
+        for source in sources_for_slice(claim_slice):
             source_by_id[source["source_id"]] = source
 
     lines.extend(["## Sources", ""])

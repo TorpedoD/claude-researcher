@@ -165,10 +165,10 @@ flowchart TD
     G2 -->|Flag| P2
     G2 -->|Abort| Stop
 
-    P3[Phase 3: Claim Extraction] --> Claims[claim_bank.json<br/>stable claims + source IDs]
+    P3[Phase 3: Claim Extraction] --> Claims[claim_bank.json + entity_index.json<br/>stable claims + source IDs]
     Claims --> P4
 
-    P4[Phase 4: Graph Relationships] --> Graphify[Graphify<br/>relationship hints]
+    P4[Phase 4: Graph Relationships] --> Graphify[claim/entity graph<br/>relationship hints]
     Graphify --> P5
 
     P5[Phase 5: Section Brief Synthesis] --> Briefs[section_briefs<br/>claim_slices]
@@ -229,11 +229,11 @@ research/run-001-20260411T090950/
 │   ├── evidence/          # Collected evidence with provenance headers
 │   ├── quarantine/        # Flagged/excluded sources
 │   └── collection_log.md  # Per-source crawl status
-├── graph/                 # Graphify outputs (graph.json, GRAPH_REPORT.md)
 ├── synthesis/
 │   ├── global_id_registry.json
 │   ├── claim_bank.json    # Canonical claim state
-│   ├── claim_slices/      # Per-section claim/source slices
+│   ├── entity_index.json  # Entity-to-claim lookup
+│   ├── claim_slices/      # Compact per-section working packets
 │   ├── section_briefs/    # Compact section memory
 │   ├── claim_graph_map.json
 │   ├── section_graph_hints.json
@@ -255,7 +255,7 @@ research/run-001-20260411T090950/
 
 The `manifest.json` tracks per-phase status (`pending`, `running`, `complete`, `failed`). New runs use `pipeline_contract_version: claim_pipeline_v1` and phase names `planning`, `collection`, `claim_extraction`, `graph_relationships`, `section_brief_synthesis`, `formatting`, and `publishing`. Resume reads this file to determine where to pick up.
 
-`claim_bank.json` is the primary research state. Other synthesis artifacts point back to claim IDs. A global file is considered tiny only if it is under 20KB or under 300 lines; larger global state must be sliced before downstream agents consume it. `raw_research.md` is deprecated as a handoff and replaced by optional `synthesis/research_notes.md` diagnostics.
+`claim_bank.json` is the primary research state. Other synthesis artifacts point back to claim IDs. Formatter agents consume compact section slices rather than global claim state. `raw_research.md` is deprecated as a handoff and replaced by optional `synthesis/research_notes.md` diagnostics.
 
 ---
 

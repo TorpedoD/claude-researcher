@@ -453,10 +453,10 @@ def append_log(run_dir, phase, action, status, detail):
      prompt="Collect evidence for the research run at <run_dir_path>.
        Read scope/scope.md and scope/plan.json from the run directory for collection targets.
        Use scripts/parallel_crawl.py (Crawl4AI arun_many + MemoryAdaptiveDispatcher) for concurrent web crawling
-       and `xargs -P <docling_parallelism> docling` for parallel document parsing.
+       and scripts/parallel_docling.py for parallel document parsing.
        Write outputs to <run_dir_path>/collect/.
        Budget: max_pages=<N>, max_per_domain=<N>, max_depth=<N>.
-       Use `manifest.runtime_profile.resolved.max_concurrent` and `manifest.runtime_profile.resolved.per_domain_cap` for crawl concurrency knobs, `manifest.runtime_profile.resolved.docling_parallelism` for `xargs -P`, and `manifest.runtime_profile.resolved.docling_device` / `docling_threads` for Docling flags.
+       Use `manifest.runtime_profile.resolved.max_concurrent` and `manifest.runtime_profile.resolved.per_domain_cap` for crawl concurrency knobs, and `manifest.runtime_profile.resolved.docling_parallelism`, `docling_device`, and `docling_threads` for Docling SDK flags.
        Follow the research-collect skill instructions for all collection procedures.",
      subagent_type="research-collector",
      model="sonnet",
@@ -533,7 +533,7 @@ def append_log(run_dir, phase, action, status, detail):
 **Canonical outputs:**
 - `synthesis/global_id_registry.json`
 - `synthesis/claim_bank.json`
-- Optional legacy compatibility: `synthesis/claim_index.json` derived from `claim_bank.json`
+- `synthesis/entity_index.json`
 
 **Contract notes:** Claims are the primary unit. `categorized_evidence.json` is not canonical. Every claim has exactly one `primary_section_id`, stable `id`, normalized `content_hash`, `source_ids`, `confidence`, `salience`, and `include_in_report`.
 
@@ -570,7 +570,7 @@ def append_log(run_dir, phase, action, status, detail):
      For large runs, write one synthesis/claim_deltas/*.json file per source, section, or evidence batch, then merge.
      Do not write raw_research.md.
      Do not create planner sections.
-     Produce synthesis/global_id_registry.json, synthesis/claim_bank.json, and optional compatibility synthesis/claim_index.json.
+     Produce synthesis/global_id_registry.json, synthesis/claim_bank.json, and synthesis/entity_index.json.
      Follow research-synthesize/SKILL.md Stage 1.
      """
    )
@@ -580,8 +580,9 @@ def append_log(run_dir, phase, action, status, detail):
 
 5. **Validate claim artifacts.**
    ```bash
-   python3 ~/.claude/skills/research-orchestrator/scripts/validate_artifact.py "$run_dir/synthesis/global_id_registry.json" ~/.claude/skills/research-synthesize/references/global_id_registry.schema.json
-   python3 ~/.claude/skills/research-orchestrator/scripts/validate_artifact.py "$run_dir/synthesis/claim_bank.json" ~/.claude/skills/research-synthesize/references/claim_bank.schema.json
+  python3 ~/.claude/skills/research-orchestrator/scripts/validate_artifact.py "$run_dir/synthesis/global_id_registry.json" ~/.claude/skills/research-synthesize/references/global_id_registry.schema.json
+  python3 ~/.claude/skills/research-orchestrator/scripts/validate_artifact.py "$run_dir/synthesis/claim_bank.json" ~/.claude/skills/research-synthesize/references/claim_bank.schema.json
+  python3 ~/.claude/skills/research-orchestrator/scripts/validate_artifact.py "$run_dir/synthesis/entity_index.json" ~/.claude/skills/research-synthesize/references/entity_index.schema.json
    ```
 
    Log validation results. Validation warnings surface at Gate 3.
@@ -593,7 +594,7 @@ def append_log(run_dir, phase, action, status, detail):
 
 ### Phase 4: Graph Relationships
 
-**Objective:** Build relationship metadata from claims, entities, categories, and sources.
+**Objective:** Build relationship metadata from extracted claims and entities.
 
 **Canonical outputs:**
 - `synthesis/claim_graph_map.json`
@@ -608,122 +609,18 @@ def append_log(run_dir, phase, action, status, detail):
    update_phase_status(manifest_path, "graph_relationships", "running")
    ```
 
-2. **Invoke Graphify diagnostics after claims exist.**
-
-   The graphify CLI has no `build` subcommand. Graph construction requires the Python SDK invoked through the pipx interpreter. Follow these sub-steps in order.
-
-   **Step 2a: Discover pipx interpreter.**
+2. **Build compact graph artifacts from claim/entity state.**
    ```bash
-   GRAPHIFY_VENV=$(pipx environment --value PIPX_LOCAL_VENVS 2>/dev/null)/graphify
-   PYTHON="$GRAPHIFY_VENV/bin/python3"
-   # Fallback: import-based discovery if pipx environment is unavailable
-   if [ ! -x "$PYTHON" ]; then
-       PYTHON=$(python3 -c "import graphify; import sys; print(sys.executable)" 2>/dev/null)
-   fi
-   ```
-
-   **Step 2b: Detect files in evidence directory.**
-   ```bash
-   $PYTHON -c "
-   from graphify.detect import detect
-   from pathlib import Path
-   import json
-   result = detect(Path('<run_dir>/collect/evidence'))
-   Path('<run_dir>/.graphify_detect.json').write_text(json.dumps(result))
-   print(f'Detected {result[\"total_files\"]} evidence files')
-   "
-   ```
-
-   Log: `append_log(run_dir, 'graph_relationships', 'graphify_detect', 'ok', f'Detected {N} evidence files')`
-
-   **Step 2c: Semantic extraction for graph diagnostics.**
-
-   Evidence files are markdown documents -- `graphify.extract.extract()` is AST-only (code files). For markdown evidence, use claim entities from `synthesis/claim_bank.json` as the primary semantic input. If richer evidence-level relationships are needed, the orchestrator may perform bounded semantic extraction, but it must not reinterpret evidence as a second synthesis pass.
-
-   **Safety:** Only process files from `collect/evidence/` (post-quarantine). Never process files from `collect/quarantine/`.
-
-   For evidence corpora with **< 20 files** (typical for single research runs), the orchestrator performs semantic extraction **inline** -- it reads each evidence markdown file and produces entity/relationship JSON following the graphify extraction schema.
-
-   For corpora with **>= 20 files**, dispatch `Agent()` subagents with the extraction prompt for chunks of 10 files each (following graphify SKILL.md Step 3B pattern).
-
-   For each evidence file in `collect/evidence/*.md`, extract entities and relationships using this JSON schema:
-
-   ```json
-   {
-     "nodes": [
-       {
-         "id": "filestem_entityname",
-         "label": "Human Readable Name",
-         "file_type": "document",
-         "source_file": "relative/path"
-       }
-     ],
-     "edges": [
-       {
-         "source": "node_id",
-         "target": "node_id",
-         "relation": "references|cites|conceptually_related_to|implements|depends_on",
-         "confidence": "EXTRACTED|INFERRED|AMBIGUOUS",
-         "confidence_score": 0.8
-       }
-     ],
-     "hyperedges": []
-   }
-   ```
-
-   Rules for extraction:
-   - EXTRACTED: relationship explicit in source (citation, "see section X", direct reference)
-   - INFERRED: reasonable inference (shared concept, implied dependency)
-   - AMBIGUOUS: uncertain -- flag for review, do not omit
-   - confidence_score: EXTRACTED=1.0, INFERRED=0.6-0.9, AMBIGUOUS=0.1-0.3
-
-   Merge claim/entity extractions into a single JSON and write to `<run_dir>/.graphify_extract.json`.
-
-   Log: `append_log(run_dir, 'graph_relationships', 'semantic_extraction', 'ok', f'Extracted entities from {N} files ({inline_or_agent})')`
-
-   **Validation (T-03-01):** Before passing extraction JSON to `build_from_json`, validate that `nodes` and `edges` are arrays, each node has a string `id` and `label`, and each edge has string `source` and `target`. Reject malformed entries (log warning, skip entry) rather than aborting.
-
-   **Step 2d: Build, cluster, analyze, export HTML, and post-process.**
-   ```bash
-   $PYTHON ~/.claude/skills/research-orchestrator/scripts/build_graph.py --run-dir "$run_dir"
-   ```
-   Writes `collect/graphify-out/{graph.json,graph.html,central_nodes.json,isolated_nodes.json,cluster_map.json,GRAPH_REPORT.md}`; prints `EMPTY_CORPUS_GUARD:` on stdout when 0 nodes/edges.
-
-   After the subprocess returns, check for the empty-corpus guard output and log from orchestrator context:
-   ```python
-   import json
-   from pathlib import Path
-   graph_data = json.loads((Path('<run_dir>/collect/graphify-out') / 'graph.json').read_text())
-   if not graph_data.get('nodes'):
-       append_log(run_dir, 'graph_relationships', 'empty_corpus_guard', 'warn',
-                  'Graph has 0 edges — stub files written, graph hints will be sparse')
-   ```
-
-   Log: `append_log(run_dir, 'graph_relationships', 'graphify_build', 'ok', f'Graph: {N} nodes, {M} edges, {K} communities')`
-   Log: `append_log(run_dir, 'graph_relationships', 'metrics_extracted', 'ok', f'Central: {N}, Isolated: {M}, Clusters: {K}')`
-
-   **Step 2e: Cleanup.** Intermediate files (`.graphify_detect.json`, `.graphify_extract.json`) are cleaned up in Step 2d after graph construction. They live in `<run_dir>/` (not the evidence directory) to avoid contaminating evidence.
-
-3. **Graphify diagnostic outputs.** Written to `<run_dir>/collect/graphify-out/`:
-   - `graph.json` -- Full graph data with nodes, edges, communities, central_nodes, isolated_nodes, and cluster_map (all fields injected per graph.json contract)
-   - `GRAPH_REPORT.md` -- Plain-language report: communities, god nodes, surprising connections, suggested questions
-   - `graph.html` -- Interactive HTML visualization of the knowledge graph (GRAPH-02)
-   - `central_nodes.json` -- Nodes with highest degree/betweenness (diagnostic central concepts only)
-   - `isolated_nodes.json` -- Low-connectivity nodes (diagnostic gap signals)
-   - `cluster_map.json` -- Community-to-member mapping (diagnostic relationship context)
-
-   **Important:** These files are diagnostics. Downstream synthesis consumes compact files in `synthesis/`, not `GRAPH_REPORT.md`.
-
-4. **Build compact graph artifacts.**
-   ```bash
+   python3 ~/.claude/skills/research-synthesize/scripts/claim_pipeline.py build-entity-index --run-dir "$run_dir"
    python3 ~/.claude/skills/research-synthesize/scripts/claim_pipeline.py build-graph-artifacts --run-dir "$run_dir"
+   python3 ~/.claude/skills/research-orchestrator/scripts/validate_artifact.py "$run_dir/synthesis/entity_index.json" ~/.claude/skills/research-synthesize/references/entity_index.schema.json
    python3 ~/.claude/skills/research-orchestrator/scripts/validate_artifact.py "$run_dir/synthesis/claim_graph_map.json" ~/.claude/skills/research-synthesize/references/claim_graph_map.schema.json
    python3 ~/.claude/skills/research-orchestrator/scripts/validate_artifact.py "$run_dir/synthesis/section_graph_hints.json" ~/.claude/skills/research-synthesize/references/section_graph_hints.schema.json
    ```
 
    `section_graph_hints.json` must list only planner-defined section IDs. Graph centrality is advisory and must not create or reorder sections.
 
-5. **Update manifest:**
+3. **Update manifest:**
    ```python
    update_phase_status(manifest_path, "graph_relationships", "complete")
    ```

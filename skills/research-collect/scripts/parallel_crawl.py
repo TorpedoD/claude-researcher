@@ -48,7 +48,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Dict, List, Optional, Tuple
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 
 # --- RLIMIT_NOFILE bump (before any async machinery) -----------------------------
@@ -169,6 +169,13 @@ _SHORT_TITLE_FAIL_RE = re.compile(
 )
 
 _SENTENCE_END_CHARS = set(".!?)\"'`*#")
+DOCUMENT_EXTENSIONS = {".pdf", ".docx", ".pptx", ".xlsx"}
+DOCUMENT_PATH_HINTS = (
+    "/pdf/",
+    "/download/pdf",
+    "/research/pdf/",
+)
+MARKDOWN_LINK_RE = re.compile(r"\[[^\]]+\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)")
 
 # A4: Header profiles for web crawl path only (never used in docling or direct-read paths)
 _HEADER_PROFILES = [
@@ -223,6 +230,38 @@ def _crawl_slug(url: str) -> str:
     s = urlparse(url).path.rstrip("/").split("/")[-1] or urlparse(url).hostname or "page"
     s = re.sub(r"[^\w-]", "-", s).strip("-").lower()
     return s[:60] or "page"
+
+
+def is_document_url(url: str) -> bool:
+    parsed = urlparse(url.split("#", 1)[0])
+    path = parsed.path.lower()
+    query = parsed.query.lower()
+    if any(path.endswith(ext) for ext in DOCUMENT_EXTENSIONS):
+        return True
+    if any(hint in path for hint in DOCUMENT_PATH_HINTS):
+        return True
+    return any(token in query for token in ("format=pdf", "type=pdf"))
+
+
+def document_links_from_record(record: Dict[str, Any]) -> List[str]:
+    """Return unique crawl-discovered document links that should be parsed by Docling."""
+    base_url = record.get("final_url") or record.get("url") or ""
+    candidates: list[str] = []
+    for group in ("internal", "external"):
+        for href in record.get("links", {}).get(group, []) or []:
+            if isinstance(href, str):
+                candidates.append(href)
+    for href in MARKDOWN_LINK_RE.findall(record.get("markdown", "") or ""):
+        candidates.append(href)
+
+    out: list[str] = []
+    seen: set[str] = set()
+    for href in candidates:
+        absolute = urljoin(base_url, href)
+        if is_document_url(absolute) and absolute not in seen:
+            seen.add(absolute)
+            out.append(absolute)
+    return out
 
 
 # Stepped concurrency ladder (mirrors CEILINGS values across tiers)
@@ -325,6 +364,7 @@ def _result_to_record(
             "soft_fail_reason": None,
         }
     base.update(quality)
+    base["docling_candidate_urls"] = document_links_from_record(base) if ok else []
     return base
 
 

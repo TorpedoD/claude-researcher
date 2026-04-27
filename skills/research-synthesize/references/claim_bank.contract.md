@@ -24,5 +24,5 @@ Canonical research state. Every downstream artifact points back to `claim_id`s f
 
 - Each `claim_id` has exactly one `primary_section_id`.
 - Claims include normalized SHA-256 `content_hash` values for dedupe detection.
-- `claim_bank.json` replaces `claim_index.json` as the canonical claim artifact.
-- Downstream agents must not read the full file unless it is tiny: under 20KB or under 300 lines. Otherwise they consume `synthesis/claim_slices/<section_id>.json`.
+- `claim_bank.json` is the canonical claim artifact.
+- Downstream formatter agents consume `synthesis/claim_slices/<section_id>.json` instead of this global file.

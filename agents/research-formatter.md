@@ -19,7 +19,7 @@ Required:
 
 - `manifest.json` -- `format_preferences` only.
 - `synthesis/section_briefs/<section_id>.json` -- compact section intent and claim IDs.
-- `synthesis/claim_slices/<section_id>.json` -- the only claim text and source records available to that section.
+- `synthesis/claim_slices/<section_id>.json` -- required claim text, optional claim briefs, and source records available to that section.
 - `synthesis/section_graph_hints.json` -- advisory hints, sliced mentally to the current section only.
 
 Forbidden in the main path:
@@ -52,7 +52,7 @@ All citations render as Markdown title links:
 [Source Title](url)
 ```
 
-Numeric citations are not used in Slice 3. Mixed styles fail audit.
+Numbered citation styles are not used in Slice 3. Mixed styles fail audit.
 
 ## Workflow
 
@@ -71,7 +71,7 @@ Numeric citations are not used in Slice 3. Mixed styles fail audit.
 3. Write `output/sections/<section_id>.md`.
    - Start with `## <Section Title>`.
    - Open with a short summary.
-   - Include all `must_include_claim_ids`.
+   - Include all `must_include_claim_ids` from required claims.
    - Include optional claims only when useful for the selected depth.
    - Use only source records present in that section's claim slice.
    - Cite factual claims as `[Source Title](url)`.

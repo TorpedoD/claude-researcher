@@ -23,6 +23,7 @@ research/run-NNN-TIMESTAMP/
   synthesis/
     global_id_registry.json    # Stable source_id, claim_id, section_id, and content_hash registry
     claim_bank.json            # Canonical claim state
+    entity_index.json          # Entity-to-claim lookup for graph relationship hints
     claim_slices/              # Per-section claim/source slices for report composition
     section_briefs/            # Compact per-section briefs that reference claim IDs
     claim_graph_map.json       # Claim-to-graph relationship metadata
@@ -83,6 +84,7 @@ Subdirectories are created lazily by downstream phases on first use. This avoids
 | `collect/graphify-out/*` | graphify (via orchestrator) | graph_relationships phase |
 | `synthesis/global_id_registry.json` | research-synthesize | research-synthesize, research-format |
 | `synthesis/claim_bank.json` | research-synthesize | orchestrator (checkpoint gate 3), section brief synthesis |
+| `synthesis/entity_index.json` | research-synthesize | graph_relationships phase |
 | `synthesis/claim_slices/*.json` | research-synthesize | research-format section agents |
 | `synthesis/section_briefs/*.json` | research-synthesize | research-format |
 | `synthesis/claim_graph_map.json` | graph_relationships phase | section brief synthesis |
@@ -92,7 +94,6 @@ Subdirectories are created lazily by downstream phases on first use. This avoids
 | `synthesis/claim_index.json` | legacy research-synthesize | Deprecated; compatibility artifact derived from claim_bank.json if needed |
 | `synthesis/citation_audit.md` | research-synthesize | orchestrator (checkpoint gate 3) |
 | `synthesis/gap_analysis.md` | research-synthesize | orchestrator (gap-fill decision) |
-| `synthesis/citation_registry.json` | legacy orchestrator (pre-synthesis) | Deprecated numeric citation registry; not used by claim_pipeline_v1 report composition |
 | `synthesis/evidence_routing.json` | orchestrator (pre-synthesis) | Per-evidence-file cluster assignments with routing_confidence |
 | `output/assembly_plan.json` | research-format | Section agents, final assembler |
 | `output/sections/*.md` | research-format | final assembler |

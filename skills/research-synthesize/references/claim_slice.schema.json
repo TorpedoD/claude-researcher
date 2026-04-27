@@ -2,57 +2,23 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "claim_slice.schema.json",
   "title": "Claim Slice",
-  "description": "Per-section slice containing only the claims and source records needed by one section agent.",
+  "description": "Compact self-contained per-section packet for one formatter section agent.",
   "type": "object",
-  "required": ["section_id", "section_brief_path", "claims", "sources", "boundary_rules"],
+  "required": ["section_id", "section_brief_path", "required_claims", "optional_claims", "source_records", "boundary_rules"],
   "properties": {
     "section_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]*$"},
     "section_brief_path": {"type": "string", "pattern": "^synthesis/section_briefs/.+\\.json$"},
-    "claims": {
+    "required_claims": {
       "type": "array",
-      "items": {
-        "type": "object",
-        "required": [
-          "id",
-          "text",
-          "content_hash",
-          "primary_section_id",
-          "source_ids",
-          "confidence",
-          "salience",
-          "include_in_report"
-        ],
-        "properties": {
-          "id": {"type": "string", "pattern": "^claim_[0-9]{3,}$"},
-          "text": {"type": "string", "minLength": 1},
-          "content_hash": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
-          "primary_section_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]*$"},
-          "source_ids": {
-            "type": "array",
-            "items": {"type": "string", "pattern": "^src_[0-9]{3,}$"},
-            "minItems": 1,
-            "uniqueItems": true
-          },
-          "confidence": {"type": "string", "enum": ["high", "medium", "low"]},
-          "salience": {"type": "string", "enum": ["high", "medium", "low"]},
-          "include_in_report": {"type": "boolean"}
-        },
-        "additionalProperties": false
-      }
+      "items": {"$ref": "#/$defs/required_claim"}
     },
-    "sources": {
+    "optional_claims": {
       "type": "array",
-      "items": {
-        "type": "object",
-        "required": ["source_id", "title", "url", "tier"],
-        "properties": {
-          "source_id": {"type": "string", "pattern": "^src_[0-9]{3,}$"},
-          "title": {"type": "string", "minLength": 1},
-          "url": {"type": "string", "minLength": 1},
-          "tier": {"type": "integer", "minimum": 1, "maximum": 5}
-        },
-        "additionalProperties": false
-      }
+      "items": {"$ref": "#/$defs/optional_claim"}
+    },
+    "source_records": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/source_record"}
     },
     "boundary_rules": {
       "type": "array",
@@ -60,5 +26,87 @@
       "minItems": 1
     }
   },
-  "additionalProperties": false
+  "additionalProperties": false,
+  "$defs": {
+    "required_claim": {
+      "type": "object",
+      "required": [
+        "id",
+        "text",
+        "primary_section_id",
+        "source_ids",
+        "confidence",
+        "salience",
+        "include_in_report"
+      ],
+      "properties": {
+        "id": {"type": "string", "pattern": "^claim_[0-9]{3,}$"},
+        "text": {"type": "string", "minLength": 1},
+        "primary_section_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]*$"},
+        "source_ids": {
+          "type": "array",
+          "items": {"type": "string", "pattern": "^src_[0-9]{3,}$"},
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "confidence": {"type": "string", "enum": ["high", "medium", "low"]},
+        "salience": {"type": "string", "enum": ["high", "medium", "low"]},
+        "include_in_report": {"type": "boolean"},
+        "entities": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1},
+          "uniqueItems": true
+        },
+        "contradiction_ids": {
+          "type": "array",
+          "items": {"type": "string", "pattern": "^conflict_[0-9]{3,}$"},
+          "uniqueItems": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "optional_claim": {
+      "type": "object",
+      "required": [
+        "id",
+        "brief",
+        "primary_section_id",
+        "source_ids",
+        "confidence",
+        "salience",
+        "include_in_report"
+      ],
+      "properties": {
+        "id": {"type": "string", "pattern": "^claim_[0-9]{3,}$"},
+        "brief": {"type": "string", "minLength": 1, "maxLength": 180},
+        "primary_section_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]*$"},
+        "source_ids": {
+          "type": "array",
+          "items": {"type": "string", "pattern": "^src_[0-9]{3,}$"},
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "confidence": {"type": "string", "enum": ["high", "medium", "low"]},
+        "salience": {"type": "string", "enum": ["high", "medium", "low"]},
+        "include_in_report": {"type": "boolean"},
+        "entities": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1},
+          "uniqueItems": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "source_record": {
+      "type": "object",
+      "required": ["source_id", "title", "url", "tier"],
+      "properties": {
+        "source_id": {"type": "string", "pattern": "^src_[0-9]{3,}$"},
+        "title": {"type": "string", "minLength": 1},
+        "url": {"type": "string", "minLength": 1},
+        "tier": {"type": "integer", "minimum": 1, "maximum": 5}
+      },
+      "additionalProperties": false
+    }
+  }
 }

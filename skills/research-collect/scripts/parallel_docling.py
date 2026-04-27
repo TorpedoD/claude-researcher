@@ -43,6 +43,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
+from urllib.parse import urlparse
 
 # ---------------------------------------------------------------------------
 # Gate-1 remediation: surface import failure before spawning workers
@@ -64,6 +65,11 @@ except Exception as _exc:
 # ---------------------------------------------------------------------------
 
 DOCLING_WHITELIST = {".pdf", ".docx", ".pptx", ".xlsx"}
+PDF_URL_PATH_HINTS = (
+    "/pdf/",
+    "/download/pdf",
+    "/research/pdf/",
+)
 COMPLEX_HTML_SIZE_BYTES = 200 * 1024  # 200 KB
 COMPLEX_HTML_TABLE_PATTERN = re.compile(r"<table[\s>]", re.IGNORECASE)
 COMPLEX_HTML_IFRAME_PATTERN = re.compile(r"<iframe[\s>]", re.IGNORECASE)
@@ -212,9 +218,14 @@ def _cache_store(cache_dir: Path, key: str, markdown: str, meta: dict) -> None:
 
 def _routing(source: str, content_bytes: bytes | None = None) -> tuple[str, str]:
     """Return (extraction_method, extraction_method_reason)."""
-    ext = Path(source).suffix.lower()
+    parsed = urlparse(source)
+    path = parsed.path if parsed.scheme in {"http", "https"} else source
+    ext = Path(path).suffix.lower()
     if ext in DOCLING_WHITELIST:
         return "docling_sdk", "whitelist_extension"
+    lowered_path = path.lower()
+    if any(hint in lowered_path for hint in PDF_URL_PATH_HINTS):
+        return "docling_sdk", "pdf_url_path"
     if ext in (".html", ".htm"):
         if content_bytes is not None:
             size = len(content_bytes)
@@ -345,7 +356,7 @@ def _convert_one(args: tuple) -> dict:
         return base_record
 
     # Read source bytes for routing + cache key
-    ext = Path(source).suffix.lower() if not source.startswith("http") else ""
+    ext = Path(urlparse(source).path if source.startswith("http") else source).suffix.lower()
     content_bytes: bytes | None = None
     try:
         if not source.startswith("http") and Path(source).exists():

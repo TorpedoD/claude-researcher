@@ -13,6 +13,7 @@ FIXTURES = Path(__file__).parent / "fixtures" / "contracts"
 CONTRACTS = {
     "global_id_registry": SYNTH_REFS / "global_id_registry.schema.json",
     "claim_bank": SYNTH_REFS / "claim_bank.schema.json",
+    "entity_index": SYNTH_REFS / "entity_index.schema.json",
     "claim_slice": SYNTH_REFS / "claim_slice.schema.json",
     "section_brief": SYNTH_REFS / "section_brief.schema.json",
     "claim_graph_map": SYNTH_REFS / "claim_graph_map.schema.json",
@@ -70,13 +71,14 @@ def test_claim_bank_requires_canonical_claim_fields():
 def test_claim_slice_contains_one_section_and_only_matching_claims_and_sources():
     fixture = load_json(FIXTURES / "claim_slice" / "valid_minimal.json")
     section_id = fixture["section_id"]
-    source_ids = {source["source_id"] for source in fixture["sources"]}
+    claims = fixture["required_claims"] + fixture["optional_claims"]
+    source_ids = {source["source_id"] for source in fixture["source_records"]}
 
     assert isinstance(section_id, str) and section_id
-    assert all(claim["primary_section_id"] == section_id for claim in fixture["claims"])
+    assert all(claim["primary_section_id"] == section_id for claim in claims)
     assert all(
         set(claim["source_ids"]).issubset(source_ids)
-        for claim in fixture["claims"]
+        for claim in claims
     )
 
 

@@ -1,0 +1,15 @@
+{
+  "entities": [
+    {
+      "entity": "Ouroboros",
+      "normalized": "ouroboros",
+      "claim_ids": ["claim_001"],
+      "section_ids": ["consensus"],
+      "source_ids": ["src_001"]
+    }
+  ],
+  "metadata": {
+    "total_entities": 1,
+    "schema_version": "entity_index.v1"
+  }
+}

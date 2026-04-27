@@ -19,7 +19,7 @@ from typing import Any
 BOUNDARY_RULES = [
     "Each claim_id has exactly one primary_section_id.",
     "Claims primary to another section may be referenced only as cross-links, not rewritten.",
-    "Do not read global claim_bank.json or inventory.json during section composition unless the file is tiny.",
+    "Do not read global claim_bank.json or inventory.json during section composition.",
 ]
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -228,7 +228,6 @@ def merge_claim_deltas(run_dir: Path) -> dict[str, Any]:
     }
     write_json(run_dir / "synthesis" / "global_id_registry.json", registry)
     write_json(run_dir / "synthesis" / "claim_bank.json", claim_bank)
-    write_legacy_claim_index(run_dir, claim_bank)
     return claim_bank
 
 
@@ -240,7 +239,6 @@ def write_legacy_claim_index(run_dir: Path, claim_bank: dict[str, Any]) -> None:
                 "claim_hash": claim["content_hash"],
                 "section": claim["primary_section_id"],
                 "sources": [{"source_id": sid} for sid in claim["source_ids"]],
-                "formatter_destination": None,
             }
             for claim in claim_bank.get("claims", [])
         ],
@@ -252,16 +250,55 @@ def write_legacy_claim_index(run_dir: Path, claim_bank: dict[str, Any]) -> None:
     write_json(run_dir / "synthesis" / "claim_index.json", legacy)
 
 
+def build_entity_index(run_dir: Path, claim_bank: dict[str, Any] | None = None) -> dict[str, Any]:
+    claim_bank = claim_bank or load_json(run_dir / "synthesis" / "claim_bank.json")
+    entities: dict[str, dict[str, Any]] = {}
+    for claim in claim_bank.get("claims", []):
+        for entity in claim.get("entities", []) or []:
+            normalized = normalize_text(entity)
+            row = entities.setdefault(
+                normalized,
+                {
+                    "entity": entity,
+                    "normalized": normalized,
+                    "claim_ids": [],
+                    "section_ids": [],
+                    "source_ids": [],
+                },
+            )
+            row["claim_ids"].append(claim["id"])
+            row["section_ids"].append(claim["primary_section_id"])
+            row["source_ids"].extend(claim.get("source_ids", []))
+
+    entity_index = {
+        "entities": [
+            {
+                "entity": row["entity"],
+                "normalized": row["normalized"],
+                "claim_ids": sorted(set(row["claim_ids"])),
+                "section_ids": sorted(set(row["section_ids"])),
+                "source_ids": sorted(set(row["source_ids"])),
+            }
+            for row in sorted(entities.values(), key=lambda item: item["normalized"])
+        ],
+        "metadata": {"total_entities": len(entities), "schema_version": "entity_index.v1"},
+    }
+    write_json(run_dir / "synthesis" / "entity_index.json", entity_index)
+    return entity_index
+
+
 def build_graph_artifacts(run_dir: Path) -> tuple[dict[str, Any], dict[str, Any]]:
     claim_bank = load_json(run_dir / "synthesis" / "claim_bank.json")
+    entity_index = load_json(run_dir / "synthesis" / "entity_index.json", default=None)
+    if entity_index is None:
+        entity_index = build_entity_index(run_dir, claim_bank)
     sections = planned_sections(run_dir)
     planned_ids = [section["section_id"] for section in sections]
     claims = claim_bank.get("claims", [])
 
     by_entity: dict[str, set[str]] = {}
-    for claim in claims:
-        for entity in claim.get("entities", []) or []:
-            by_entity.setdefault(normalize_text(entity), set()).add(claim["id"])
+    for entity in entity_index.get("entities", []):
+        by_entity[entity["normalized"]] = set(entity.get("claim_ids", []))
 
     graph_claims = []
     for claim in claims:
@@ -327,6 +364,41 @@ def build_graph_artifacts(run_dir: Path) -> tuple[dict[str, Any], dict[str, Any]
     return claim_graph_map, section_graph_hints
 
 
+def required_slice_claim(claim: dict[str, Any]) -> dict[str, Any]:
+    row = {
+        "id": claim["id"],
+        "text": claim["text"],
+        "primary_section_id": claim["primary_section_id"],
+        "source_ids": claim["source_ids"],
+        "confidence": claim["confidence"],
+        "salience": claim["salience"],
+        "include_in_report": claim["include_in_report"],
+    }
+    if claim.get("entities"):
+        row["entities"] = claim["entities"]
+    if claim.get("contradiction_ids"):
+        row["contradiction_ids"] = claim["contradiction_ids"]
+    return row
+
+
+def optional_slice_claim(claim: dict[str, Any]) -> dict[str, Any]:
+    brief = re.sub(r"\s+", " ", claim["text"]).strip()
+    if len(brief) > 180:
+        brief = brief[:177].rstrip() + "..."
+    row = {
+        "id": claim["id"],
+        "brief": brief,
+        "primary_section_id": claim["primary_section_id"],
+        "source_ids": claim["source_ids"],
+        "confidence": claim["confidence"],
+        "salience": claim["salience"],
+        "include_in_report": claim["include_in_report"],
+    }
+    if claim.get("entities"):
+        row["entities"] = claim["entities"]
+    return row
+
+
 def build_section_artifacts(run_dir: Path) -> None:
     registry = init_registry(run_dir)
     claim_bank = load_json(run_dir / "synthesis" / "claim_bank.json")
@@ -364,18 +436,14 @@ def build_section_artifacts(run_dir: Path) -> None:
         write_json(brief_path, brief)
 
         source_ids = sorted({sid for claim in claims for sid in claim.get("source_ids", [])})
-        slice_claims = [
-            {
-                key: claim[key]
-                for key in ["id", "text", "content_hash", "primary_section_id", "source_ids", "confidence", "salience", "include_in_report"]
-            }
-            for claim in claims
-        ]
+        required_claims = [required_slice_claim(claim) for claim in claims if claim["id"] in must]
+        optional_claims = [optional_slice_claim(claim) for claim in claims if claim["id"] in optional]
         claim_slice = {
             "section_id": section_id,
             "section_brief_path": f"synthesis/section_briefs/{section_id}.json",
-            "claims": slice_claims,
-            "sources": [source_by_id[sid] for sid in source_ids if sid in source_by_id],
+            "required_claims": required_claims,
+            "optional_claims": optional_claims,
+            "source_records": [source_by_id[sid] for sid in source_ids if sid in source_by_id],
             "boundary_rules": BOUNDARY_RULES,
         }
         write_json(slice_dir / f"{section_id}.json", claim_slice)
@@ -387,6 +455,7 @@ def validate_readiness(run_dir: Path) -> dict[str, Any]:
     required = [
         "synthesis/global_id_registry.json",
         "synthesis/claim_bank.json",
+        "synthesis/entity_index.json",
         "synthesis/claim_graph_map.json",
         "synthesis/section_graph_hints.json",
     ]
@@ -400,6 +469,7 @@ def validate_readiness(run_dir: Path) -> dict[str, Any]:
     schema_checks = [
         ("synthesis/global_id_registry.json", "global_id_registry.schema.json"),
         ("synthesis/claim_bank.json", "claim_bank.schema.json"),
+        ("synthesis/entity_index.json", "entity_index.schema.json"),
         ("synthesis/claim_graph_map.json", "claim_graph_map.schema.json"),
         ("synthesis/section_graph_hints.json", "section_graph_hints.schema.json"),
     ]
@@ -440,7 +510,13 @@ def validate_readiness(run_dir: Path) -> dict[str, Any]:
         unknown = referenced - claim_ids
         if unknown:
             errors.append(f"{section_id} brief references unknown claim_ids: {sorted(unknown)}")
-        slice_claim_ids = {claim["id"] for claim in claim_slice.get("claims", [])}
+        slice_claim_ids = {
+            claim["id"]
+            for claim in (
+                claim_slice.get("required_claims", [])
+                + claim_slice.get("optional_claims", [])
+            )
+        }
         if not referenced.issubset(slice_claim_ids):
             errors.append(f"{section_id} slice is missing brief claim_ids: {sorted(referenced - slice_claim_ids)}")
         if (
@@ -503,6 +579,7 @@ def run_all(run_dir: Path) -> dict[str, Any]:
     init_registry(run_dir)
     if (run_dir / "synthesis" / "claim_deltas").exists():
         merge_claim_deltas(run_dir)
+    build_entity_index(run_dir)
     build_graph_artifacts(run_dir)
     build_section_artifacts(run_dir)
     return validate_readiness(run_dir)
@@ -513,6 +590,8 @@ def main() -> int:
     parser.add_argument("command", choices=[
         "init-registry",
         "merge-deltas",
+        "write-legacy-claim-index",
+        "build-entity-index",
         "build-graph-artifacts",
         "build-section-artifacts",
         "validate-readiness",
@@ -526,6 +605,11 @@ def main() -> int:
         result = init_registry(run_dir)
     elif args.command == "merge-deltas":
         result = merge_claim_deltas(run_dir)
+    elif args.command == "write-legacy-claim-index":
+        write_legacy_claim_index(run_dir, load_json(run_dir / "synthesis" / "claim_bank.json"))
+        result = {"status": "pass", "path": "synthesis/claim_index.json"}
+    elif args.command == "build-entity-index":
+        result = build_entity_index(run_dir)
     elif args.command == "build-graph-artifacts":
         result = build_graph_artifacts(run_dir)[1]
     elif args.command == "build-section-artifacts":

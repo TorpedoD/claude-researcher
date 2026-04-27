@@ -419,7 +419,7 @@ def main():
     )
     parser.add_argument(
         "--docling-parallelism", type=int, default=None,
-        help="Override docling xargs -P value (overrides runtime profile)"
+        help="Override Docling SDK worker parallelism (overrides runtime profile)"
     )
     parser.add_argument(
         "--i-understand-degraded", action="store_true",
