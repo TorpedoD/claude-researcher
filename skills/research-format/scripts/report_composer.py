@@ -47,15 +47,14 @@ def schema_errors(artifact: dict[str, Any], schema_name: str) -> list[str]:
     return [err.message for err in validator.iter_errors(artifact)]
 
 
-def format_preferences(run_dir: Path) -> dict[str, Any]:
+def output_preferences(run_dir: Path) -> dict[str, Any]:
     manifest_path = run_dir / "manifest.json"
     manifest = load_json(manifest_path) if manifest_path.exists() else {}
-    prefs = manifest.get("format_preferences") or {}
     return {
-        "mode": prefs.get("mode", "Full Report"),
-        "audience": prefs.get("audience", "external"),
-        "tone": prefs.get("tone", "professional"),
-        **{k: v for k, v in prefs.items() if k not in {"mode", "audience", "tone"}},
+        "depth": manifest.get("depth", "standard"),
+        "audience": manifest.get("audience", "external"),
+        "tone": manifest.get("tone", "professional"),
+        "render_targets": manifest.get("render_targets", ["md", "html"]),
     }
 
 
@@ -118,7 +117,7 @@ def build_plan(run_dir: Path) -> dict[str, Any]:
     plan = {
         "canonical_report_path": "output/report.md",
         "sections": sections,
-        "format_preferences": format_preferences(run_dir),
+        "output_preferences": output_preferences(run_dir),
     }
     errors = schema_errors(plan, "assembly_plan.schema.json")
     if errors:

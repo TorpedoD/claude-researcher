@@ -4,7 +4,7 @@
   "title": "Assembly Plan",
   "description": "Lightweight report composition plan built from sliced claim state.",
   "type": "object",
-  "required": ["canonical_report_path", "sections", "format_preferences"],
+  "required": ["canonical_report_path", "sections", "output_preferences"],
   "properties": {
     "canonical_report_path": {"type": "string", "const": "output/report.md"},
     "sections": {
@@ -29,15 +29,21 @@
         "additionalProperties": false
       }
     },
-    "format_preferences": {
+    "output_preferences": {
       "type": "object",
-      "required": ["mode", "audience", "tone"],
+      "required": ["depth", "audience", "tone", "render_targets"],
       "properties": {
-        "mode": {"type": "string", "minLength": 1},
-        "audience": {"type": "string", "minLength": 1},
-        "tone": {"type": "string", "minLength": 1}
+        "depth": {"type": "string", "enum": ["summary", "standard", "comprehensive", "audit"]},
+        "audience": {"type": "string", "enum": ["internal", "external", "technical", "executive"]},
+        "tone": {"type": "string", "enum": ["concise", "professional", "explanatory"]},
+        "render_targets": {
+          "type": "array",
+          "items": {"type": "string", "enum": ["md", "qmd", "html", "pdf"]},
+          "minItems": 1,
+          "uniqueItems": true
+        }
       },
-      "additionalProperties": true
+      "additionalProperties": false
     }
   },
   "additionalProperties": false

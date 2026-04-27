@@ -70,16 +70,10 @@ def planned_sections(run_dir: Path) -> list[dict[str, str]]:
     plan = load_json(run_dir / "scope" / "plan.json")
     names: list[str] = []
 
-    for entry in plan.get("section_depths", []) or []:
-        section = entry.get("section")
-        if section:
-            names.append(str(section))
-
-    if not names:
-        for entry in plan.get("subtopics", []) or []:
-            name = entry.get("name")
-            if name:
-                names.append(str(name))
+    for entry in plan.get("subtopics", []) or []:
+        name = entry.get("name")
+        if name:
+            names.append(str(name))
 
     seen: set[str] = set()
     sections: list[dict[str, str]] = []
@@ -120,9 +114,7 @@ def init_registry(run_dir: Path) -> dict[str, Any]:
         existing_sources.append(new_id)
 
     plan = load_json(run_dir / "scope" / "plan.json")
-    names = [entry.get("section") for entry in plan.get("section_depths", []) or [] if entry.get("section")]
-    if not names:
-        names = [entry.get("name") for entry in plan.get("subtopics", []) or [] if entry.get("name")]
+    names = [entry.get("name") for entry in plan.get("subtopics", []) or [] if entry.get("name")]
     used_section_ids = set(registry["section_ids"].values())
     for name in names:
         key = normalize_text(str(name))

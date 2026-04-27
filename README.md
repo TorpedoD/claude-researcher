@@ -92,7 +92,7 @@ The orchestrator walks you through 7 phases and pauses at 4 checkpoint gates for
 /research --resume RUN_ID
 ```
 
-Resume is built into `/research`. Running `/research` with no topic automatically scans `research/` for runs whose `manifest.json` has a `running` or `failed` phase. Use `--resume RUN_ID` to continue one from the last completed phase, or `--list-interrupted` when you only want the list. No re-crawling, no lost work.
+Resume is built into `/research`. Running `/research` with no topic automatically scans `research/` for runs whose `manifest.json` has a `running` or `failed` phase. Use `--resume RUN_ID` to continue one from the last completed phase, or `--list-interrupted` when you only want the list. Resume detects prior artifacts and continues from the next valid phase when required artifacts pass validation.
 
 ### Budget configuration
 
@@ -111,8 +111,23 @@ python3 ~/.claude/skills/research-orchestrator/scripts/init_run.py \
   "your research request" \
   --max-pages 50 \
   --max-per-domain 10 \
-  --max-depth 2
+  --max-depth 2 \
+  --collection-mode auto \
+  --validation-mode normal
 ```
+
+Mode fields are explicit in `manifest.json`:
+
+```json
+{
+  "run_mode": "normal",
+  "collection_mode": "web_and_docs",
+  "validation_mode": "normal",
+  "source_channels": {"web": true, "documents": true}
+}
+```
+
+`collection_mode=auto` resolves from `source_channels`: web plus documents uses Crawl4AI, Playwright, and Docling; documents only uses Docling; web only uses Crawl4AI and Playwright; `metadata_only` skips extraction and only inventories/resumes existing run metadata. `validation_mode=strict` is intended for CI and fails on missing audit artifacts that normal interactive runs only warn about.
 
 ---
 
@@ -122,7 +137,7 @@ At key points in the pipeline, the orchestrator pauses and asks for your input b
 
 | Gate | When it fires | Your options |
 |------|--------------|--------------|
-| **Gate 1 — Scope review** | After planning: the orchestrator shows you the research scope and 7-layer question tree | Confirm scope → proceed · Adjust → re-plan · Abort |
+| **Gate 1 — Scope review** | After planning: the orchestrator shows scope, source channels, depth, output targets, and the 7-layer question tree | Approve plan · Edit scope/depth/output · Abort |
 | **Gate 2 — Source review** | After collection: shows you the evidence inventory and which sources were flagged or quarantined | Proceed · Flag a source → re-collect · Abort |
 | **Gate 3 — Claim state review** | After claim extraction, graph relationships, and section brief synthesis: shows `claim_bank.json`, coverage, weak areas, and slicing status | Proceed · Gap-fill → re-collect targeted sources · Abort |
 | **Gate 4 — Report approval** | After formatting/report composition: shows `output/report.md`, section metadata, and `formatter_audit.json` before optional publishing | Approve report · Skip publishing · Abort |
@@ -253,7 +268,17 @@ research/run-001-20260411T090950/
     └── run_log.md         # Timestamped action log for entire run
 ```
 
-The `manifest.json` tracks per-phase status (`pending`, `running`, `complete`, `failed`). New runs use `pipeline_contract_version: claim_pipeline_v1` and phase names `planning`, `collection`, `claim_extraction`, `graph_relationships`, `section_brief_synthesis`, `formatting`, and `publishing`. Resume reads this file to determine where to pick up.
+The `manifest.json` tracks per-phase status (`pending`, `running`, `complete`, `failed`). New runs use `pipeline_contract_version: claim_pipeline_v1` and phase names `planning`, `collection`, `claim_extraction`, `graph_relationships`, `section_brief_synthesis`, `formatting`, and `publishing`. Resume reads this file and validates required artifacts to determine where to pick up.
+
+Architecture boundaries:
+
+```text
+orchestrator = dispatch + gates
+preflight = tools
+manifest = state
+validators = artifact checks
+skills = execution
+```
 
 `claim_bank.json` is the primary research state. Other synthesis artifacts point back to claim IDs. Formatter agents consume compact section slices rather than global claim state. `raw_research.md` is deprecated as a handoff and replaced by optional `synthesis/research_notes.md` diagnostics.
 

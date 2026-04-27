@@ -24,6 +24,12 @@ Machine-readable research plan used by the collection agent to guide source disc
 | priorities | array of strings | Yes | Ordered list of subtopic names by priority (highest first) |
 | expected_source_types | array of strings | Yes | Source types to seek (e.g., "docs", "paper", "blog", "code", "forum") |
 | estimated_coverage_areas | array of strings | Yes | Broad topic domains the research should span |
+| source_channels | object | No | Source intent used to resolve `collection_mode=auto`, with boolean `web` and `documents` keys |
+| depth | string | No | Global output depth: `summary`, `standard`, `comprehensive`, or `audit` |
+| audience | string | No | Intended audience: `internal`, `external`, `technical`, or `executive` |
+| tone | string | No | Output tone: `concise`, `professional`, or `explanatory` |
+| render_targets | array of strings | No | Requested render targets: `md`, `qmd`, `html`, `pdf` |
+| section_depth_overrides | object | No | Optional per-section depth overrides using the same depth enum as `depth` |
 
 ## Example
 
@@ -56,7 +62,16 @@ Machine-readable research plan used by the collection agent to guide source disc
     "Consensus algorithms",
     "Edge computing constraints",
     "Production deployments"
-  ]
+  ],
+  "source_channels": {"web": true, "documents": true},
+  "depth": "standard",
+  "audience": "technical",
+  "tone": "professional",
+  "render_targets": ["md", "html"],
+  "section_depth_overrides": {
+    "Historical background": "summary",
+    "Consensus algorithms": "comprehensive"
+  }
 }
 ```
 
@@ -69,6 +84,8 @@ Machine-readable research plan used by the collection agent to guide source disc
 ## Notes
 
 - The collection agent uses `subtopics[].questions` to generate search queries
+- `source_channels` controls automatic collection-mode resolution
 - The synthesis agent uses `subtopics` ordering to structure thematic sections
+- Sections inherit global `depth` unless `section_depth_overrides` names them
 - `priorities` array provides a flat ordering for quick priority lookups
 - `expected_source_types` guides the collector on which extraction methods to prefer

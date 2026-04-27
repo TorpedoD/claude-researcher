@@ -17,7 +17,7 @@ It composes from section briefs and per-section claim slices.
 
 Required:
 
-- `manifest.json` -- `format_preferences` only.
+- `manifest.json` -- output preferences only: `depth`, `audience`, `tone`, and `render_targets`.
 - `synthesis/section_briefs/<section_id>.json` -- compact section intent and claim IDs.
 - `synthesis/claim_slices/<section_id>.json` -- required claim text, optional claim briefs, and source records available to that section.
 - `synthesis/section_graph_hints.json` -- advisory hints, sliced mentally to the current section only.

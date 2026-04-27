@@ -1,12 +1,12 @@
 # Base _quarto.yml template for PDF runs (Phase 12 — D-25, D-27).
-# Copied into <run_dir>/output/_quarto.yml at Gate 3 when user selects PDF or Both.
+# Copied into <run_dir>/output/_quarto.yml during Phase 6 when render targets include PDF.
 #
 # Design intent (Phase 12 — minimal clean PDF):
 #   - xelatex engine (Unicode-safe, TinyTeX-provided)
 #   - 11pt body font, 1.4 linestretch for readability
 #   - 1 inch margins all sides
 #   - US Letter paper size
-#   - quarto-ext/mermaid filter enabled (installed at Gate 3)
+#   - quarto-ext/mermaid filter enabled (installed during publishing when needed)
 #
 # Non-goals (deferred to Phase 19 — PDF Quality):
 #   - Custom font families (Inter body, JetBrains Mono code)

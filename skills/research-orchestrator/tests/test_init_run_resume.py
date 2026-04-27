@@ -29,6 +29,7 @@ def write_manifest(root: Path, run_id: str, statuses: dict, request: str = "test
                 "run_id": run_id,
                 "created_at": "2026-04-27T00:00:00+00:00",
                 "user_request": request,
+                "validation_mode": "normal",
                 "phase_status": phase_status,
             },
             indent=2,
@@ -144,6 +145,35 @@ def test_resume_cli_reports_resume_metadata(tmp_path):
     assert "Completed phases: planning" in result.stdout
     assert "Last phase: collection" in result.stdout
     assert "Next phase: collection" in result.stdout
+    assert "Required artifacts:" in result.stdout
+
+
+def test_resume_cli_json_reports_artifact_status(tmp_path):
+    run_dir = write_manifest(
+        tmp_path,
+        "run-001-20260427T000000",
+        {
+            "planning": "complete",
+            "collection": "complete",
+            "claim_extraction": "failed",
+        },
+    )
+    collect = run_dir / "collect"
+    collect.mkdir()
+    (collect / "inventory.json").write_text('{"sources": []}\n')
+
+    result = run_init(tmp_path, "--resume", "run-001-20260427T000000", "--json")
+
+    assert result.returncode == 0
+    payload = json.loads(result.stdout)
+    assert payload["run_id"] == "run-001-20260427T000000"
+    assert payload["run_mode"] == "resume"
+    assert payload["next_phase"] == "claim_extraction"
+    assert payload["required_artifacts"] == ["collect/inventory.json", "collect/evidence"]
+    assert payload["artifact_status"]["collect/inventory.json"] == "valid"
+    assert payload["artifact_status"]["collect/evidence"] == "missing"
+    assert payload["recommended_command"] == "/research --resume run-001-20260427T000000"
+    assert payload["dispatch"] == "run synthesizer claim extraction"
 
 
 def test_resume_cli_fails_for_complete_run(tmp_path):
@@ -171,7 +201,8 @@ def test_budget_shorthand_creates_manifest_with_overrides(tmp_path):
         tmp_path,
         "--50,10,2",
         "budget shorthand topic",
-        "--i-understand-degraded",
+        "--collection-mode",
+        "metadata_only",
     )
 
     assert result.returncode == 0
@@ -181,6 +212,10 @@ def test_budget_shorthand_creates_manifest_with_overrides(tmp_path):
     assert manifest["budget_config"]["max_pages"] == 50
     assert manifest["budget_config"]["max_per_domain"] == 10
     assert manifest["budget_config"]["max_depth"] == 2
+    assert manifest["run_mode"] == "normal"
+    assert manifest["collection_mode"] == "metadata_only"
+    assert manifest["validation_mode"] == "normal"
+    assert manifest["source_channels"] == {"web": False, "documents": False}
 
 
 def test_budget_shorthand_rejects_missing_component(tmp_path):
@@ -188,7 +223,6 @@ def test_budget_shorthand_rejects_missing_component(tmp_path):
         tmp_path,
         "--50,10",
         "budget shorthand topic",
-        "--i-understand-degraded",
     )
 
     assert result.returncode == 2
@@ -200,7 +234,6 @@ def test_budget_shorthand_rejects_non_integer_component(tmp_path):
         tmp_path,
         "--50,x,2",
         "budget shorthand topic",
-        "--i-understand-degraded",
     )
 
     assert result.returncode == 2
@@ -212,7 +245,8 @@ def test_budget_shorthand_rejects_non_positive_component(tmp_path):
         tmp_path,
         "--0,10,2",
         "budget shorthand topic",
-        "--i-understand-degraded",
+        "--collection-mode",
+        "metadata_only",
     )
 
     assert result.returncode == 1
@@ -229,7 +263,10 @@ def test_long_form_budget_overrides_still_create_manifest(tmp_path):
         "12",
         "--max-depth",
         "4",
-        "--i-understand-degraded",
+        "--collection-mode",
+        "metadata_only",
+        "--validation-mode",
+        "strict",
     )
 
     assert result.returncode == 0
@@ -239,3 +276,51 @@ def test_long_form_budget_overrides_still_create_manifest(tmp_path):
     assert manifest["budget_config"]["max_pages"] == 60
     assert manifest["budget_config"]["max_per_domain"] == 12
     assert manifest["budget_config"]["max_depth"] == 4
+    assert manifest["validation_mode"] == "strict"
+
+
+def test_collection_mode_auto_resolves_from_source_channels():
+    init_run = load_init_run()
+
+    assert init_run.resolve_collection_mode({"web": True, "documents": True}, "auto") == "web_and_docs"
+    assert init_run.resolve_collection_mode({"web": False, "documents": True}, "auto") == "docs_only"
+    assert init_run.resolve_collection_mode({"web": True, "documents": False}, "auto") == "web_only"
+    assert init_run.resolve_collection_mode({"web": False, "documents": False}, "auto") == "metadata_only"
+    assert init_run.resolve_collection_mode({"web": False, "documents": False}, "none") == "metadata_only"
+
+
+def test_missing_dependencies_follow_collection_mode():
+    init_run = load_init_run()
+    no_tools = {}
+
+    assert [name for name, _ in init_run.missing_dependencies("web_and_docs", no_tools)] == [
+        "crawl4ai",
+        "playwright chromium runtime",
+        "docling",
+    ]
+    assert [name for name, _ in init_run.missing_dependencies("docs_only", no_tools)] == ["docling"]
+    assert [name for name, _ in init_run.missing_dependencies("web_only", no_tools)] == [
+        "crawl4ai",
+        "playwright chromium runtime",
+    ]
+    assert init_run.missing_dependencies("metadata_only", no_tools) == []
+
+
+def test_collection_mode_metadata_only_requires_no_extraction_tools(tmp_path):
+    result = run_init(tmp_path, "metadata-only topic", "--collection-mode", "metadata_only")
+
+    assert result.returncode == 0
+    run_dir = next((tmp_path / "research").glob("run-*"))
+    manifest = json.loads((run_dir / "manifest.json").read_text())
+    assert manifest["collection_mode"] == "metadata_only"
+    assert manifest["source_channels"] == {"web": False, "documents": False}
+
+
+def test_collection_mode_legacy_alias_persists_metadata_only(tmp_path):
+    result = run_init(tmp_path, "metadata-only topic", "--collection-mode", "none")
+
+    assert result.returncode == 0
+    run_dir = next((tmp_path / "research").glob("run-*"))
+    manifest = json.loads((run_dir / "manifest.json").read_text())
+    assert manifest["collection_mode"] == "metadata_only"
+    assert manifest["source_channels"] == {"web": False, "documents": False}

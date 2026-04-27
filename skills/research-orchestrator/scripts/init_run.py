@@ -70,6 +70,36 @@ PHASES = [
     "formatting", "publishing",
 ]
 
+COLLECTION_MODES = ("web_and_docs", "docs_only", "web_only", "metadata_only")
+LEGACY_COLLECTION_MODE_ALIASES = {"none": "metadata_only"}
+VALIDATION_MODES = ("normal", "strict")
+
+REQUIRED_ARTIFACTS_BY_PHASE = {
+    "collection": ["scope/plan.json", "scope/question_tree.json"],
+    "claim_extraction": ["collect/inventory.json", "collect/evidence"],
+    "graph_relationships": ["synthesis/claim_bank.json"],
+    "section_brief_synthesis": [
+        "synthesis/claim_bank.json",
+        "synthesis/entity_index.json",
+        "synthesis/claim_graph_map.json",
+    ],
+    "formatting": ["synthesis/section_briefs", "synthesis/claim_slices"],
+    "publishing": ["output/report.md"],
+}
+
+STRICT_ARTIFACTS_BY_PHASE = {
+    "publishing": ["output/formatter_audit.json"],
+}
+
+DISPATCH_TABLE = {
+    "collection": "run collector",
+    "claim_extraction": "run synthesizer claim extraction",
+    "graph_relationships": "run graph enrichment",
+    "section_brief_synthesis": "run section brief synthesis",
+    "formatting": "run formatter",
+    "publishing": "run publisher",
+}
+
 # Valid state machine transitions for phase_status
 _VALID_TRANSITIONS = {
     ("pending", "running"),
@@ -122,7 +152,81 @@ def next_run_id() -> tuple:
     return counter, run_name
 
 
-def create_manifest(run_id: str, user_request: str, budget: dict, runtime_profile: Optional[dict] = None) -> dict:
+def resolve_collection_mode(source_channels: dict, requested_mode: str = "auto") -> str:
+    """Resolve a concrete collection mode from source channel intent."""
+    requested_mode = LEGACY_COLLECTION_MODE_ALIASES.get(requested_mode, requested_mode)
+    if requested_mode != "auto":
+        if requested_mode not in COLLECTION_MODES:
+            raise ValueError(f"Unknown collection mode: {requested_mode}")
+        return requested_mode
+
+    wants_web = bool(source_channels.get("web", True))
+    wants_docs = bool(source_channels.get("documents", True))
+    if wants_web and wants_docs:
+        return "web_and_docs"
+    if wants_docs:
+        return "docs_only"
+    if wants_web:
+        return "web_only"
+    return "metadata_only"
+
+
+def missing_dependencies(collection_mode: str, tools: Optional[dict]) -> list[tuple[str, str]]:
+    """Return missing dependency names and user-run remediation commands."""
+    collection_mode = LEGACY_COLLECTION_MODE_ALIASES.get(collection_mode, collection_mode)
+    tools = tools or {}
+    missing = []
+    needs_web = collection_mode in ("web_and_docs", "web_only")
+    needs_docs = collection_mode in ("web_and_docs", "docs_only")
+
+    if needs_web and not tools.get("crawl4ai_python"):
+        missing.append(("crawl4ai", "pipx install crawl4ai"))
+    if needs_web and not tools.get("playwright_ok", False):
+        missing.append(("playwright chromium runtime", "playwright install chromium"))
+    if needs_docs and not tools.get("docling_python"):
+        missing.append(("docling", "pipx install docling"))
+    return missing
+
+
+def artifact_status(run_dir: Path, artifact: str) -> str:
+    """Return a compact validation status for a run artifact."""
+    path = run_dir / artifact
+    if not path.exists():
+        return "missing"
+    if path.is_dir():
+        try:
+            return "valid" if any(path.iterdir()) else "missing"
+        except OSError:
+            return "invalid"
+    if path.suffix == ".json":
+        try:
+            json.loads(path.read_text())
+        except (OSError, json.JSONDecodeError):
+            return "invalid"
+    return "valid"
+
+
+def required_artifacts_for_phase(phase: Optional[str], validation_mode: str = "normal") -> list[str]:
+    """Return required artifacts for entering a phase."""
+    if not phase:
+        return []
+    artifacts = list(REQUIRED_ARTIFACTS_BY_PHASE.get(phase, []))
+    if validation_mode == "strict":
+        artifacts.extend(STRICT_ARTIFACTS_BY_PHASE.get(phase, []))
+    return artifacts
+
+
+def create_manifest(
+    run_id: str,
+    user_request: str,
+    budget: dict,
+    runtime_profile: Optional[dict] = None,
+    *,
+    source_channels: Optional[dict] = None,
+    collection_mode: str = "web_and_docs",
+    validation_mode: str = "normal",
+    tools: Optional[dict] = None,
+) -> dict:
     """Create initial manifest with all phases pending.
 
     Args:
@@ -140,8 +244,16 @@ def create_manifest(run_id: str, user_request: str, budget: dict, runtime_profil
         "created_at": datetime.now(timezone.utc).isoformat(),
         "user_request": user_request,
         "task_type": None,
-        "collection_mode": "full",
-        "environment": {"tinytex_available": False},
+        "run_mode": "normal",
+        "collection_mode": collection_mode,
+        "validation_mode": validation_mode,
+        "source_channels": source_channels or {"web": True, "documents": True},
+        "depth": "standard",
+        "audience": "external",
+        "tone": "professional",
+        "render_targets": ["md", "html"],
+        "section_depth_overrides": {},
+        "environment": {"tinytex_available": False, "tools": tools or {}},
         "runtime_profile": runtime_profile or {},
         "budget_config": {
             "max_pages": budget.get("max_pages", 75),
@@ -339,16 +451,29 @@ def resume_run(run_id: str, research_root: Optional[Path] = None) -> dict:
     if not problem_phases:
         raise ValueError(f"Run is not interrupted: {run_id}")
 
+    next_phase = _next_phase_to_run(statuses)
+    validation_mode = manifest.get("validation_mode", "normal")
+    required_artifacts = required_artifacts_for_phase(next_phase, validation_mode)
+    status = {
+        artifact: artifact_status(run_dir, artifact)
+        for artifact in required_artifacts
+    }
+
     return {
         "run_id": manifest.get("run_id", run_id),
         "run_dir": str(run_dir),
+        "run_mode": "resume",
         "problem_phases": problem_phases,
         "completed_phases": [
             name for name, info in statuses.items()
             if isinstance(info, dict) and info.get("status") == "complete"
         ],
         "last_phase": _last_non_pending_phase(statuses),
-        "next_phase": _next_phase_to_run(statuses),
+        "next_phase": next_phase,
+        "required_artifacts": required_artifacts,
+        "artifact_status": status,
+        "recommended_command": f"/research --resume {run_id}",
+        "dispatch": DISPATCH_TABLE.get(next_phase),
         "user_request": manifest.get("user_request", ""),
     }
 
@@ -404,10 +529,38 @@ def main():
         help="Load an interrupted run and print resume metadata"
     )
     parser.add_argument(
+        "--json", action="store_true",
+        help="Emit machine-readable JSON for resume/inspect output"
+    )
+    parser.add_argument(
         "--performance-mode",
-        choices=["conservative", "balanced", "aggressive"],
+        choices=["auto", "conservative", "balanced", "aggressive"],
         default=None,
-        help="Performance mode for concurrency tuning (default: balanced)"
+        help="Performance mode for concurrency tuning (default: auto)"
+    )
+    parser.add_argument(
+        "--collection-mode",
+        choices=["auto", *COLLECTION_MODES, "none"],
+        default="auto",
+        help="Collection mode; auto resolves from source channels (legacy alias: none=metadata_only)"
+    )
+    parser.add_argument(
+        "--validation-mode",
+        choices=VALIDATION_MODES,
+        default="normal",
+        help="Artifact validation mode (default: normal)"
+    )
+    parser.add_argument(
+        "--source-web",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Include web source channel when resolving collection-mode=auto"
+    )
+    parser.add_argument(
+        "--source-documents",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Include document source channel when resolving collection-mode=auto"
     )
     parser.add_argument(
         "--max-concurrent", type=int, default=None,
@@ -420,10 +573,6 @@ def main():
     parser.add_argument(
         "--docling-parallelism", type=int, default=None,
         help="Override Docling SDK worker parallelism (overrides runtime profile)"
-    )
-    parser.add_argument(
-        "--i-understand-degraded", action="store_true",
-        help="Confirm continuation in docs-only mode when crawl4ai is unresolved"
     )
     parser.add_argument(
         "--fixture-dir", default=None,
@@ -440,7 +589,14 @@ def main():
             sys.exit(1)
 
     if args.list_interrupted:
-        _format_interrupted_runs(find_interrupted_runs())
+        interrupted = find_interrupted_runs()
+        if args.json:
+            print(json.dumps({
+                "run_mode": "inspect",
+                "interrupted_runs": interrupted,
+            }, indent=2))
+        else:
+            _format_interrupted_runs(interrupted)
         sys.exit(0)
 
     if args.resume:
@@ -450,18 +606,22 @@ def main():
             print(f"Error: {exc}", file=sys.stderr)
             sys.exit(1)
 
-        problems = ", ".join(
-            f"{name} ({info['status']})"
-            for name, info in run["problem_phases"].items()
-        )
-        completed = ", ".join(run["completed_phases"]) or "none"
-        print(f"Resume run: {run['run_id']}")
-        print(f"  Directory: {run['run_dir']}")
-        print(f"  Request: {run['user_request'][:80]}")
-        print(f"  Problem phases: {problems}")
-        print(f"  Completed phases: {completed}")
-        print(f"  Last phase: {run['last_phase'] or 'none'}")
-        print(f"  Next phase: {run['next_phase'] or 'none'}")
+        if args.json:
+            print(json.dumps(run, indent=2))
+        else:
+            problems = ", ".join(
+                f"{name} ({info['status']})"
+                for name, info in run["problem_phases"].items()
+            )
+            completed = ", ".join(run["completed_phases"]) or "none"
+            print(f"Resume run: {run['run_id']}")
+            print(f"  Directory: {run['run_dir']}")
+            print(f"  Request: {run['user_request'][:80]}")
+            print(f"  Problem phases: {problems}")
+            print(f"  Completed phases: {completed}")
+            print(f"  Last phase: {run['last_phase'] or 'none'}")
+            print(f"  Next phase: {run['next_phase'] or 'none'}")
+            print(f"  Required artifacts: {', '.join(run['required_artifacts']) or 'none'}")
         sys.exit(0)
 
     interrupted = find_interrupted_runs()
@@ -475,38 +635,47 @@ def main():
         print("Start a new research run with /research <topic>")
         sys.exit(0)
 
-    # Resolve performance mode
-    perf_mode = args.performance_mode or os.environ.get("RESEARCH_PERF_MODE", "balanced")
-    if perf_mode not in ("conservative", "balanced", "aggressive"):
+    # Resolve performance mode. "auto" uses the runtime detector default profile.
+    perf_mode = args.performance_mode or os.environ.get("RESEARCH_PERF_MODE", "auto")
+    if perf_mode == "auto":
+        perf_mode_for_detector = "balanced"
+    else:
+        perf_mode_for_detector = perf_mode
+    if perf_mode_for_detector not in ("conservative", "balanced", "aggressive"):
+        perf_mode = "auto"
+        perf_mode_for_detector = "balanced"
+
+    source_channels = {
+        "web": bool(args.source_web),
+        "documents": bool(args.source_documents),
+    }
+    collection_mode = resolve_collection_mode(source_channels, args.collection_mode)
+    if collection_mode == "metadata_only":
+        source_channels = {"web": False, "documents": False}
+
+    if args.validation_mode not in VALIDATION_MODES:
+        print(f"Error: invalid validation mode: {args.validation_mode}", file=sys.stderr)
+        sys.exit(1)
+
+    if perf_mode not in ("auto", "conservative", "balanced", "aggressive"):
         perf_mode = "balanced"
 
     # Detect runtime (hardware + tools)
-    runtime_profile = detect_runtime_profile(perf_mode)
+    runtime_profile = detect_runtime_profile(perf_mode_for_detector)
     tools = runtime_profile.get("tools") or resolve_tools()
 
-    # Gate-1: fail if crawl4ai unresolved
-    crawl4ai_python = tools.get("crawl4ai_python") if tools else None
-    if not crawl4ai_python:
+    dependency_errors = missing_dependencies(collection_mode, tools)
+    if dependency_errors:
         print("\n" + "="*60, file=sys.stderr)
-        print("  Gate-1: Missing dependencies detected", file=sys.stderr)
+        print("  Missing dependencies for collection mode", file=sys.stderr)
         print("="*60, file=sys.stderr)
-        print("  - crawl4ai:  not found  (searched: CRAWL4AI_PYTHON, pipx, .venv, PATH, system python3)", file=sys.stderr)
-        docling_python = (tools or {}).get("docling_python")
-        status = f"found  {docling_python}" if docling_python else "not found"
-        print(f"  - docling:   {status}", file=sys.stderr)
-        playwright_ok = (tools or {}).get("playwright_ok", False)
-        print(f"  - playwright: {'found' if playwright_ok else 'not found'}", file=sys.stderr)
-        print("\nOptions:", file=sys.stderr)
-        print("  1. Abort", file=sys.stderr)
-        print("  2. Continue without web collection (docs-only)  [pass --i-understand-degraded]", file=sys.stderr)
-        print("  3. Fix environment and retry", file=sys.stderr)
+        print(f"  collection_mode: {collection_mode}", file=sys.stderr)
+        for name, command in dependency_errors:
+            print(f"  - {name}: not found", file=sys.stderr)
+            print(f"    install: {command}", file=sys.stderr)
+        print("\nFix the environment or choose a collection mode whose requirements are met.", file=sys.stderr)
         print("="*60 + "\n", file=sys.stderr)
-        if not args.i_understand_degraded:
-            sys.exit(1)
-        # Degraded mode: set collection_mode
-        collection_mode = "degraded"
-    else:
-        collection_mode = "full"
+        sys.exit(1)
 
     # Apply CLI overrides to resolved knobs
     recommended = (runtime_profile.get("recommended") or {}).copy()
@@ -523,7 +692,7 @@ def main():
     _default_cache = str(Path.home() / ".cache" / "research-collect" / "docling")
     recommended["docling_cache_dir"] = os.environ.get("RESEARCH_CACHE_DIR", _default_cache)
     recommended["docling_format_whitelist"] = [".pdf", ".docx", ".pptx", ".xlsx"]
-    recommended["crawl_user_agent_mode"] = "random" if perf_mode == "aggressive" else "http"
+    recommended["crawl_user_agent_mode"] = "random" if perf_mode_for_detector == "aggressive" else "http"
     recommended["honor_retry_after"] = True
     recommended["referer_policy"] = "same_site_only"
     recommended["backoff_min_dwell_seconds"] = 30
@@ -531,8 +700,6 @@ def main():
     # Embed into runtime_profile.resolved
     runtime_profile["resolved"] = recommended
     runtime_profile["performance_mode_used"] = perf_mode
-    if tools:
-        runtime_profile["tools"] = tools
 
     # Create new run
     counter, run_name = next_run_id()
@@ -543,8 +710,16 @@ def main():
         "max_concurrent": recommended.get("max_concurrent", 5),
         "per_domain_cap": recommended.get("per_domain_cap", 2),
     }
-    manifest = create_manifest(run_name, args.user_request, budget, runtime_profile=runtime_profile)
-    manifest["collection_mode"] = collection_mode
+    manifest = create_manifest(
+        run_name,
+        args.user_request,
+        budget,
+        runtime_profile=runtime_profile,
+        source_channels=source_channels,
+        collection_mode=collection_mode,
+        validation_mode=args.validation_mode,
+        tools=tools,
+    )
 
     run_dir = RESEARCH_ROOT / run_name
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -558,6 +733,7 @@ def main():
     print(f"  Budget: {budget}")
     print(f"  Performance mode: {perf_mode}")
     print(f"  Collection mode: {collection_mode}")
+    print(f"  Validation mode: {args.validation_mode}")
     if runtime_profile.get("tier"):
         print(f"  Hardware tier: {runtime_profile['tier']} ({runtime_profile.get('cpu_cores', '?')} cores, {runtime_profile.get('memory_gb', '?')} GB)")
 

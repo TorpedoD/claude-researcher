@@ -16,7 +16,7 @@ numbering, provenance, and budget accounting are applied deterministically post-
 
 ## Behavior
 
-1. **On activation, resolve tools first**: run `python3 ~/.claude/skills/research-collect/scripts/resolve_env.py` via Bash. If `crawl4ai_python` is null and `manifest.collection_mode != "degraded"`, stop and emit the Gate-1 remediation block from the manifest. Never use bare `python3 -c "import crawl4ai"` — always route through resolve_env.py.
+1. **On activation, resolve tools first**: run `python3 ~/.claude/skills/research-collect/scripts/resolve_env.py` via Bash. Enforce `manifest.collection_mode`: `web_and_docs` requires Crawl4AI, Playwright, and Docling; `docs_only` requires Docling; `web_only` requires Crawl4AI and Playwright; `metadata_only` skips collection. If a required tool is missing, stop and emit the remediation block from the manifest. Never use bare `python3 -c "import crawl4ai"` — always route through resolve_env.py.
 2. **Read runtime profile**: check `manifest.runtime_profile.resolved` for concurrency knobs (`max_concurrent`, `per_domain_cap`, `docling_parallelism`, `docling_device`, `docling_threads`, `docling_cache_dir`, `docling_format_whitelist`, `crawl_user_agent_mode`, `honor_retry_after`, `referer_policy`, `backoff_min_dwell_seconds`). Use these as the values passed to `parallel_crawl.py` and `parallel_docling.py`.
 3. **Read collection instructions**: read `~/.claude/skills/research-collect/SKILL.md` for full procedures.
 4. **Follow research-collect/SKILL.md** for all collection, quarantine, dedup, and provenance procedures.
@@ -31,7 +31,7 @@ numbering, provenance, and budget accounting are applied deterministically post-
 
 ## Constraints
 
-- **Never install dependencies.** If `resolve_env.py` returns null for `crawl4ai_python`, emit the Gate-1 remediation block and stop. Do not run `pip install`, `pipx install`, `playwright install`, or any install command. Never use `python3 -c "import crawl4ai"` to check — always use `resolve_env.py`.
+- **Never install dependencies.** If `resolve_env.py` returns null for a tool required by the resolved collection mode, emit the Gate-1 remediation block and stop. Do not run `pip install`, `pipx install`, `playwright install`, or any install command. Never use `python3 -c "import crawl4ai"` to check — always use `resolve_env.py`.
 - No Agent tool -- this is a leaf node, cannot spawn subagents (D-12)
 - No WebSearch or WebFetch -- use `scripts/parallel_crawl.py` (Crawl4AI SDK) via Bash exclusively (D-11)
 - No Edit tool -- write complete files, do not edit in place

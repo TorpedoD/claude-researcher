@@ -21,7 +21,6 @@ def make_qmd(run_dir: Path) -> Path:
         raise FileNotFoundError(f"canonical report missing: {report_md}")
 
     manifest = load_manifest(run_dir)
-    prefs = manifest.get("format_preferences", {})
     title = manifest.get("topic") or manifest.get("user_request") or "Research Report"
     header = [
         "---",
@@ -33,8 +32,9 @@ def make_qmd(run_dir: Path) -> Path:
         "    toc: true",
         "execute:",
         "  echo: false",
-        f'audience: "{prefs.get("audience", "external")}"',
-        f'tone: "{prefs.get("tone", "professional")}"',
+        f'audience: "{manifest.get("audience", "external")}"',
+        f'tone: "{manifest.get("tone", "professional")}"',
+        f'depth: "{manifest.get("depth", "standard")}"',
         "---",
         "",
     ]

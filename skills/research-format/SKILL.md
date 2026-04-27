@@ -18,7 +18,7 @@ When invoked by `research-orchestrator`, use only:
 
 | Input | Path | Purpose |
 |---|---|---|
-| Format preferences | `manifest.json` | mode, audience, tone, publish preference |
+| Output preferences | `manifest.json` | depth, audience, tone, render targets |
 | Section briefs | `synthesis/section_briefs/<section_id>.json` | section title, summary, required claim IDs, boundaries |
 | Claim slices | `synthesis/claim_slices/<section_id>.json` | compact required claims, optional claim briefs, and source records available to a section |
 | Graph hints | `synthesis/section_graph_hints.json` | advisory per-section relationships only |

@@ -47,12 +47,10 @@ def make_run(tmp_path: Path) -> Path:
         run_dir / "manifest.json",
         {
             "topic": "Cardano Research",
-            "format_preferences": {
-                "mode": "Full Report",
-                "audience": "external",
-                "tone": "professional",
-                "quarto_output": "none",
-            },
+            "depth": "standard",
+            "audience": "external",
+            "tone": "professional",
+            "render_targets": ["md"],
         },
     )
     write_json(

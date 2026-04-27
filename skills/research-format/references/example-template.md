@@ -1,20 +1,20 @@
-# Research Format — Full Output Template & Examples
+# Research Format — Output Template & Examples
 
 This file contains the full output template and worked before/after examples referenced from `SKILL.md`. Load this when you need a concrete skeleton to fill in, or when you want to see how the rules translate to real output.
 
 ---
 
-## Full Report Mode — Complete Template
+## Comprehensive Depth — Complete Template
 
-Use this skeleton for **Full Report mode**. For **Summary mode**, drop the Detailed Findings layer and keep Key Points as the main depth. For **Documentation mode**, the Teaching Layer block is mandatory on every section.
+Use this skeleton for `comprehensive` or `audit` depth. For `summary` depth, drop the Detailed Findings layer and keep Key Points as the main depth. For explanatory tone, include the teaching block on every section.
 
 ````markdown
 # [Topic]: Research Report
 
 Generated: [YYYY-MM-DD]
-Mode: [Full Report | Summary | Documentation]
-Audience: [Personal | External]
-Tone: [Teachy | Professional]
+Depth: [summary | standard | comprehensive | audit]
+Audience: [internal | external | technical | executive]
+Tone: [concise | professional | explanatory]
 Total Sources: [N]
 Average Credibility: [X.X]/100
 
@@ -119,7 +119,7 @@ Areas that surfaced during research but were not fully explored in the source ma
 - **Topic:** [topic]
 - **Generated:** [YYYY-MM-DD]
 - **Updated:** [YYYY-MM-DD]
-- **Mode:** [mode used]
+- **Depth:** [depth used]
 - **Audience:** [audience]
 - **Tone:** [tone]
 - **Total Sources:** [N]
@@ -235,12 +235,12 @@ flowchart LR
 
 ---
 
-### Example C — Teachy tone with Teaching Layer
+### Example C — Explanatory tone with Teaching Layer
 
-**Before (Professional tone, no Teaching Layer):**
+**Before (professional tone, no Teaching Layer):**
 > Cardano uses a layered architecture separating settlement from computation.
 
-**After (Teachy tone, Teaching Layer active):**
+**After (explanatory tone, Teaching Layer active):**
 
 > **Think of it like:** a building where the ground floor handles cash and the upper floor handles contracts — you can renovate one floor without evicting everyone on the other.
 >
@@ -290,13 +290,13 @@ flowchart LR
 
 ---
 
-### Example F — Summary mode vs Full Report mode
+### Example F — Summary Depth vs Comprehensive Depth
 
-**Same input, different modes:**
+**Same input, different depths:**
 
-**Full Report mode** — complete section with Short Summary → Key Points → Visual → Detailed Findings → Sources.
+**Comprehensive depth** — complete section with Short Summary → Key Points → Visual → Detailed Findings → Sources.
 
-**Summary mode** — compress to:
+**Summary depth** — compress to:
 > ## Rollups
 >
 > Ethereum rollups split into **optimistic** (fraud proofs, 7-day challenge) and **ZK** (validity proofs, minutes to finality) [L2Beat](https://l2beat.com). Optimistic dominates TVL today; ZK rolls are catching up on throughput.
@@ -337,7 +337,7 @@ Raft vs Paxos: Raft assigns strict leader role, Paxos allows any node to propose
 Strong consistency at the cost of availability during leader failure (~election timeout) [1](url1). Leader bottleneck under high write load [4](url4). Pipeline replication reduces latency by 40% in production [3](url3).
 ```
 
-### Formatted Output (Full Report mode, external audience)
+### Formatted Output (comprehensive depth, external audience)
 
 ```markdown
 ## Consensus Mechanisms

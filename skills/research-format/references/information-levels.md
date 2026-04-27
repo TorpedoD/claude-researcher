@@ -4,7 +4,7 @@ The formatter applies a three-tier progressive disclosure taxonomy to every `##`
 
 ## Tier Definitions
 
-| Level | Name | Purpose | Word budget / section (Full Report) | Word budget / section (Summary) |
+| Level | Name | Purpose | Word budget / section (standard/comprehensive) | Word budget / section (summary) |
 |-------|------|---------|-------------------------------------|---------------------------------|
 | L0 | Skim | Headline claim + single-sentence takeaway | ≤80 words | ≤40 words |
 | L1 | Study | Short Summary + Key Points + one primary visual | 200–450 words | 120–250 words |
@@ -16,9 +16,9 @@ Every section gets at minimum L0 + L1.
 
 L2 is added when:
 - `density_hints.json` reports `suggested_level == "reference"` for this section, OR
-- `manifest.format_preferences.mode == "Full Report"`
+- `manifest.depth` is `comprehensive` or `audit`
 
-In Summary mode, L2 is collapsed: Detailed Findings are moved to `### Supplementary Findings` (still visible, per FMT-01, but below the fold).
+In `summary` depth, L2 is collapsed: Detailed Findings are moved to `### Supplementary Findings` (still visible, per FMT-01, but below the fold).
 
 ## Per-Level Content Contracts
 

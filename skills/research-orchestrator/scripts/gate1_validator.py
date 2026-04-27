@@ -103,25 +103,37 @@ def run_gate1_validator(
 
 
 def check_tool_resolution(manifest: dict, run_dir) -> dict:
-    """Check that crawl4ai resolved correctly in manifest.runtime_profile.
+    """Check that required collection tools resolved correctly.
 
-    Returns {"status": "ok"} if resolved or degraded mode.
-    Returns {"status": "warn", "detail": "..."} if crawl4ai_python is missing.
+    Returns {"status": "ok"} when the resolved collection mode has all required
+    tools, otherwise returns {"status": "warn", "detail": "..."}.
     """
+    environment = manifest.get("environment", {})
     runtime = manifest.get("runtime_profile", {})
-    tools = runtime.get("tools", {})
-    crawl4ai_python = tools.get("crawl4ai_python")
-    collection_mode = manifest.get("collection_mode", "full")
+    tools = environment.get("tools") or runtime.get("tools", {})
+    collection_mode = manifest.get("collection_mode", "web_and_docs")
 
-    if not crawl4ai_python and collection_mode != "degraded":
-        detail = "crawl4ai_python not resolved — web collection will fail. Run with --i-understand-degraded to proceed in docs-only mode."
+    missing = []
+    if collection_mode in ("web_and_docs", "web_only"):
+        if not tools.get("crawl4ai_python"):
+            missing.append("crawl4ai")
+        if not tools.get("playwright_ok", False):
+            missing.append("playwright chromium runtime")
+    if collection_mode in ("web_and_docs", "docs_only") and not tools.get("docling_python"):
+        missing.append("docling")
+
+    if missing:
+        detail = (
+            f"collection_mode={collection_mode} requires missing tool(s): "
+            + ", ".join(missing)
+        )
         append_log(run_dir=run_dir, phase="planning",
                    action="tool_resolution_check", status="warn", detail=detail)
         return {"status": "warn", "detail": detail}
 
     append_log(run_dir=run_dir, phase="planning",
                action="tool_resolution_check", status="ok",
-               detail=f"crawl4ai_python={crawl4ai_python}, collection_mode={collection_mode}")
+               detail=f"collection_mode={collection_mode}")
     return {"status": "ok"}
 
 

@@ -10,9 +10,10 @@
       "source_ids": ["src_001"]
     }
   ],
-  "format_preferences": {
-    "mode": "Full Report",
+  "output_preferences": {
+    "depth": "standard",
     "audience": "external",
-    "tone": "professional"
+    "tone": "professional",
+    "render_targets": ["md", "html"]
   }
 }

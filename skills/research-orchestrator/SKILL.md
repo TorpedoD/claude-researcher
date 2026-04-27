@@ -44,11 +44,37 @@ The research pipeline must **NEVER** auto-install or auto-download these runtime
 If any of these are missing when the pipeline needs them, the skill/agent **MUST**:
 1. Detect the missing dependency.
 2. Emit a clear message naming the missing tool and the install command the user can run themselves (e.g., `pipx install crawl4ai`, `pipx install docling`, `playwright install chromium`).
-3. Stop the run — halt the phase with a non-zero exit. Do NOT proceed with a degraded fallback.
+3. Stop the run — halt the phase with a non-zero exit. Do NOT proceed with a fallback collection mode.
 
 Never execute `pip install`, `pipx install`, `npm install`, `playwright install`, `crawl4ai-setup`, `crawl4ai-doctor --install`, or any equivalent install command for these tools from within the pipeline.
 
 **Exception (explicitly allowed):** The Quarto `quarto-ext/mermaid` extension is auto-installed by `scripts/publish.sh` when PDF output is selected. This is the ONLY auto-download permitted in this workflow.
+
+## Run Mode Contract
+
+Manifest mode fields are separate:
+
+- `run_mode`: `normal`, `resume`, or `inspect`
+- `collection_mode`: `web_and_docs`, `docs_only`, `web_only`, or `metadata_only`
+- `validation_mode`: `normal` or `strict`
+
+`source_channels = {"web": bool, "documents": bool}` is the source intent object.
+`collection_mode=auto` is accepted by the initializer but is never persisted; it
+resolves from `source_channels` before `manifest.json` is written. `metadata_only`
+means the collection phase is skipped and no extraction tools are required.
+Legacy manifests or CLI calls that say `none` are treated as `metadata_only`;
+new manifests must persist `metadata_only`.
+
+Hard requirements:
+
+- `web_and_docs`: Crawl4AI, Playwright browser runtime, and Docling
+- `docs_only`: Docling
+- `web_only`: Crawl4AI and Playwright browser runtime
+- `metadata_only`: no extraction tools; inventory/resume metadata only
+
+`validation_mode=normal` blocks on required phase artifacts and warns on
+nonessential audit artifacts. `validation_mode=strict` fails on missing audit
+files, invalid schemas, or contract violations.
 
 ---
 
@@ -70,11 +96,29 @@ it in the research request text.
 ## Scripts
 
 - `scripts/init_run.py` -- Run initialization and resume detection
-  - New run: `python3 ~/.claude/skills/research-orchestrator/scripts/init_run.py "research request" --max-pages 75 --max-per-domain 15 --max-depth 3`
+  - New run: `python3 ~/.claude/skills/research-orchestrator/scripts/init_run.py "research request" --max-pages 75 --max-per-domain 15 --max-depth 3 --collection-mode auto`
   - New run with budget shorthand: `python3 ~/.claude/skills/research-orchestrator/scripts/init_run.py --50,10,2 "research request"`
   - Resume list: `python3 ~/.claude/skills/research-orchestrator/scripts/init_run.py --list-interrupted`
   - Resume run: `python3 ~/.claude/skills/research-orchestrator/scripts/init_run.py --resume RUN_ID`
-  - Functions: `next_run_id()`, `create_manifest()`, `update_phase_status()`, `find_interrupted_runs()`, `resume_run()`
+  - Machine-readable resume: `python3 ~/.claude/skills/research-orchestrator/scripts/init_run.py --resume RUN_ID --json`
+  - Functions: `next_run_id()`, `create_manifest()`, `update_phase_status()`, `find_interrupted_runs()`, `resume_run()`, `resolve_collection_mode()`
+
+Machine-readable resume output is the workflow control source of truth. The
+orchestrator must read `next_phase`, validate `required_artifacts`, and dispatch
+by this table:
+
+| `next_phase` | Action |
+|--------------|--------|
+| `planning` | Resume planning and show Gate 1 only if planning artifacts are not complete |
+| `collection` | Run collector unless `collection_mode=metadata_only`, then validate existing metadata and advance |
+| `claim_extraction` | Run synthesizer claim extraction |
+| `graph_relationships` | Run graph enrichment |
+| `section_brief_synthesis` | Run section brief synthesis |
+| `formatting` | Run formatter |
+| `publishing` | Run publisher |
+
+Do not treat resume output as a status report only. It determines the next phase
+to execute.
 
 - `scripts/validate_artifact.py` -- Runtime artifact validation
   - Usage: `python3 ~/.claude/skills/research-orchestrator/scripts/validate_artifact.py <artifact_path> <schema_path>`
@@ -87,6 +131,8 @@ it in the research request text.
   - Exit codes: 0=pass, 1=warn (violations found), 2=error (file missing, path traversal, oversized)
   - Checks: RULE-02 (URL cited >3x/section), CONS-01 (empty headers), CONS-02 (<2 sentences or >800 words/section), HIER-04 (bare code fences)
   - Violations are advisory WARNINGS ONLY — never blocks synthesis or Gate 3 (D-21)
+
+- `references/architecture_execution_plan.md` -- Maintainer checklist for dependency modes, gate boundaries, resume dispatch, depth taxonomy, and README promise discipline
 
 ---
 
@@ -247,107 +293,18 @@ def append_log(run_dir, phase, action, status, detail):
        Install with: quarto install tinytex
    ```
 
-   Gate 3 uses `manifest.environment.tinytex_available` to either suppress PDF/Both options or show them with a `"(requires TinyTeX — not detected)"` caveat suffix so the user retains agency. See Phase 6 / Gate 3 for the caveat handling.
+   Gate 1 output-target review uses `manifest.environment.tinytex_available` to annotate PDF-inclusive targets with a `"(requires TinyTeX — not detected)"` caveat so the user retains agency. Phase 6 graceful render fallback handles any render failure.
 
-6c. **Gate 1 depth selection (Phase 11 — D-23..D-27).** Before showing the scope review at Gate 1, ask the user to select report depth. This is the **first user interaction at Gate 1** (D-23) — it fires before the TinyTeX advisory is shown in the summary table and before the scope-review AskUserQuestion.
+6c. **Gate 1 defaulted controls.** Do not ask separate Gate 1 questions for implementation knobs. The initializer and planner set these defaults before the scope review:
+   - `depth = "standard"`
+   - `audience = "external"`
+   - `tone = "professional"`
+   - `render_targets = ["md", "html"]`
+   - `section_depth_overrides = {}`
+   - `performance_mode = "auto"`
+   - `validation_mode = "normal"`
 
-   ```python
-   depth_choice = AskUserQuestion(
-       question="Select report depth",
-       options=[
-           {"label": "Full Report - comprehensive (midnight-guide quality bar)", "value": "full"},
-           {"label": "Summary - concise overview", "value": "summary"},
-       ],
-       multiSelect=False,
-   )
-
-   # D-24: write report_depth to manifest.json
-   manifest = json.loads((run_dir / "manifest.json").read_text())
-   manifest["report_depth"] = depth_choice  # "full" or "summary"
-   (run_dir / "manifest.json").write_text(json.dumps(manifest, indent=2))
-   append_log(run_dir, 'gate_1', 'depth_selected', 'ok', f'report_depth={depth_choice}')
-   ```
-
-   After this step, proceed to the existing scope-review step (unchanged). The selected depth is consumed by the synthesizer at spawn time — see `~/.claude/skills/research-synthesize/SKILL.md` → Report Depth section.
-
-   **Resume compatibility note:** If Gate 1 is skipped due to a resumed run, `manifest.report_depth` may be absent. The synthesizer defaults to `"full"` per D-26 — do NOT retroactively write this field on resume.
-
-6c.5. **Gate 1 crawl aggressiveness (performance_mode).** After report-depth selection and before the scope-review AskUserQuestion, surface hardware capability and ask for crawl aggressiveness.
-
-   Skip this step if `RESEARCH_PERF_MODE` env var is pre-set; log `perf mode pre-selected via env: $RESEARCH_PERF_MODE` and write to manifest.
-
-   Otherwise:
-   1. Read `manifest.runtime_profile` for `tier`, `cores`, `memory_gb`, `mps_available`.
-   2. Print one-line preamble: `Detected: tier=<tier>, cores=<N>, mem=<N>GB, MPS=<available|unavailable>`
-   3. Read `CEILINGS[tier]` from `scripts/detect_runtime.py` to populate option descriptions:
-
-   ```python
-   perf_mode = AskUserQuestion(
-       question="Crawl aggressiveness — match to your hardware and risk tolerance.",
-       options=[
-           {"label": "conservative", "value": "conservative",
-            "description": f"{CEILINGS[tier]['conservative']['max_concurrent']} concurrent · per-host {CEILINGS[tier]['conservative']['per_domain_cap']} · docling {CEILINGS[tier]['conservative']['docling_parallelism']}×{CEILINGS[tier]['conservative']['docling_threads']} — lowest 429 risk"},
-           {"label": "balanced", "value": "balanced",
-            "description": f"{CEILINGS[tier]['balanced']['max_concurrent']} concurrent · per-host {CEILINGS[tier]['balanced']['per_domain_cap']} · docling {CEILINGS[tier]['balanced']['docling_parallelism']}×{CEILINGS[tier]['balanced']['docling_threads']} — default"},
-           {"label": "aggressive", "value": "aggressive",
-            "description": f"{CEILINGS[tier]['aggressive']['max_concurrent']} concurrent · per-host {CEILINGS[tier]['aggressive']['per_domain_cap']} · docling {CEILINGS[tier]['aggressive']['docling_parallelism']}×{CEILINGS[tier]['aggressive']['docling_threads']} — UA rotation + same-site Referer"},
-       ],
-       multiSelect=False,
-   )
-   ```
-
-   4. Re-invoke `init_run.py --performance-mode <choice>` to refresh `manifest.runtime_profile.resolved` with the new performance_mode values (including `crawl_user_agent_mode`, `backoff_min_dwell_seconds`, etc.).
-   5. Log: `append_log(run_dir, 'gate_1', 'perf_mode_selected', 'ok', f'performance_mode={perf_mode}')`
-
-6d. **Gate 1 per-section depth table (Phase 12 — D-06..D-09).** After Full/Summary selection and before scope-review confirmation, present a per-section depth table.
-
-   **Step A — Auto-assign depths from `scope/question_tree.json`:**
-
-   Walk the tree and assign: L0 node → `high`, L1 → `medium`, L2+ → `low` (D-07). Apply semantic-importance override: any section identified as a core mechanism, key relationship, or foundational concept escalates `low` → `medium` (D-07).
-
-   Build the `auto_entries` list as an array of `{section, depth, justification}` objects.
-
-   **Fallback when `scope/question_tree.json` is absent (Research Risk 2):** default every section to `medium`, justification `"question_tree.json absent — defaulted to medium (D-07 fallback)"`, and log:
-
-   ```python
-   append_log(run_dir, 'gate_1', 'depth_table_fallback', 'warn',
-              'question_tree.json absent — defaulted all sections to medium')
-   ```
-
-   Define any helper functions (tree walker, semantic-importance classifier) inline in the orchestrator context. They read only tree JSON; no user input, no shell execution.
-
-   **Step B — Present depth table and capture overrides:**
-
-   Display as formatted text (use the same UX pattern as other Gate 1 tables):
-
-   ```
-   Per-section depth assignments (Gate 1 — Phase 12):
-
-   | # | Section              | Auto-depth | Justification                              |
-   |---|----------------------|------------|--------------------------------------------|
-   | 1 | Raft Consensus       | high       | L0 question tree node → high depth (D-07)  |
-   | 2 | Edge Network         | medium     | L1 question tree node → medium depth (D-07)|
-   | 3 | Historical Background| low        | L2 question tree node → low depth (D-07)   |
-   ```
-
-   Then AskUserQuestion to either accept all or provide overrides:
-
-   `options = [{"label": "Accept all", "value": "accept"}, {"label": "Override (I'll type changes)", "value": "override"}]`
-
-   If `"override"`, prompt with a follow-up freeform question. Parse responses with a STRICT regex: `^\s*(\d+)\s*=\s*(low|medium|high)\s*(?:,\s*(\d+)\s*=\s*(low|medium|high)\s*)*$` (row number = depth, comma-separated). Reject malformed input and re-prompt. Allowed depth values: `low`, `medium`, `high` (enum-constrained by plan.schema.json Plan 02).
-
-   **Step C — Write `section_depths[]` and `depth_overrides[]` to plan.json:**
-
-   - Apply user overrides to the `auto_entries` in place; record each change in a parallel `overrides` list as `{section, original_depth, override_depth, override_reason: "User override at Gate 1"}`.
-   - Read `scope/plan.json`, set `plan["section_depths"] = final_entries`, and if `overrides` is non-empty, set `plan["depth_overrides"] = overrides`.
-   - Write plan.json back with `json.dumps(plan, indent=2)`.
-   - Log: `append_log(run_dir, 'gate_1', 'section_depths_written', 'ok', f'{len(final_entries)} sections, {len(overrides)} overrides')`
-
-   **Step D — Re-validate plan.json after write:**
-
-   Run `python3 ~/.claude/skills/research-orchestrator/scripts/validate_artifact.py "$run_dir/scope/plan.json" ~/.claude/skills/research-orchestrator/references/plan.schema.json`. A schema validation failure here is a HARD error — abort Gate 1 and report to the user. (Requires Plan 02 Task 2 patched plan.schema.json.)
-
-   **Resume compatibility:** If Gate 1 is skipped via `--resume`, `plan.section_depths` may be absent. The synthesizer defaults each section to `medium` per its fallback (Plan 03 Task 2).
+   If the user wants changes, they use the single Gate 1 "Edit scope/depth/output" option. Per-section depth inherits from global `depth` unless `section_depth_overrides` explicitly names a section.
 
 7. **CHECKPOINT GATE 1 (Post-Planning).** Present the proposed scope to the user. Tables MUST be printed to chat via normal output BEFORE AskUserQuestion. Do NOT embed tables inside the AskUserQuestion question/header/options. Never ask two questions at Gate 1 — one combined confirm/adjust/abort only.
 
@@ -360,14 +317,22 @@ def append_log(run_dir, phase, action, status, detail):
    | Research question | {user_request} |
    | Task type | {task_type} |
    | Subtopics | {count} (see table below) |
+   | Source channels | web={true/false}, documents={true/false} |
    | Source types | {comma-separated list} |
+   | Collection mode | {web_and_docs / docs_only / web_only / metadata_only} |
+   | Depth | {summary / standard / comprehensive / audit} |
+   | Audience | {internal / external / technical / executive} |
+   | Tone | {concise / professional / explanatory} |
+   | Render targets | {md/qmd/html/pdf list} |
+   | Validation mode | {normal / strict} |
+   | Performance mode | {auto or resolved override} |
    | Coverage areas | {comma-separated list} |
    | Budget | max_pages={N}, max_per_domain={N}, max_depth={N} |
    | TinyTeX | {available / not detected — see advisory above if false} |
 
    | # | Subtopic | Priority |
    |---|----------|----------|
-   | 1 | {name}   | {high/medium/low} |
+   | 1 | {name}   | {priority number} |
    | … | …        | … |
 
    (If `tinytex_available` is `false`, also print the advisory warning text here before the tables.)
@@ -378,8 +343,8 @@ def append_log(run_dir, phase, action, status, detail):
    scope_choice = AskUserQuestion(
        question="Review the scope above. How would you like to proceed?",
        options=[
-           {"label": "Confirm — proceed to collection with current scope", "value": "confirm"},
-           {"label": "Adjust — modify subtopics, priorities, or budget", "value": "adjust"},
+           {"label": "Approve plan — proceed with current scope, depth, and output", "value": "confirm"},
+           {"label": "Edit scope/depth/output — revise plan settings", "value": "adjust"},
            {"label": "Abort — cancel this run", "value": "abort"},
        ],
        multiSelect=False,
@@ -390,9 +355,8 @@ def append_log(run_dir, phase, action, status, detail):
 
    See `references/checkpoint_protocol.md` Gate 1 for full specification.
 
-   **Tool resolution check**: After init_run.py runs, verify `manifest.collection_mode`.
-   If `degraded`, surface a prominent warning: "⚠️ Web collection disabled — crawl4ai not resolved. Running docs-only."
-   If `full`, confirm `manifest.runtime_profile.tools.crawl4ai_python` is non-null.
+   **Tool resolution check**: After init_run.py runs, verify `manifest.collection_mode` and `manifest.environment.tools`.
+   Stop if the resolved mode's required tools are missing. `metadata_only` means collection is skipped and no extraction tools are required.
 
    Log: `append_log(run_dir, 'gate_1', 'checkpoint_shown', 'ok', 'Gate 1 displayed')`
    Log (after user responds): `append_log(run_dir, 'gate_1', 'checkpoint_response', 'ok', f'User chose: {choice}')`
@@ -638,7 +602,7 @@ def append_log(run_dir, phase, action, status, detail):
 - `synthesis/gap_analysis.md`
 - Optional diagnostics: `synthesis/research_notes.md`
 
-**Slicing rules:** The report composer parent reads only section indexes, claim IDs per section, source IDs per section, graph hint summaries, and format preferences. Section agents receive one brief, referenced claims, referenced sources, relevant graph hints, and boundary rules.
+**Slicing rules:** The report composer parent reads only section indexes, claim IDs per section, source IDs per section, graph hint summaries, and normalized output preferences. Section agents receive one brief, referenced claims, referenced sources, relevant graph hints, and boundary rules.
 
 **Steps:**
 
@@ -752,7 +716,7 @@ def append_log(run_dir, phase, action, status, detail):
 
 4. **If gap-fill NOT triggered:** Continue to Gate 3 and mark `section_brief_synthesis` complete after approval.
 
-5. **CHECKPOINT GATE 3 (Post-Synthesis).** Present synthesis results AND collect format preferences via AskUserQuestion. Gate 3 is a **two-part** gate (D-03): (A) synthesis review + proceed decision, (B) format preferences that drive Phase 6.
+5. **CHECKPOINT GATE 3 (Post-Synthesis).** Present synthesis results via one AskUserQuestion. Gate 3 reviews claim state only; it does not repeat Gate 1's output settings interview.
 
    **Part A — Synthesis review (summary table):**
    - Strongest areas (sections with most tier-1/2 citations)
@@ -766,75 +730,21 @@ def append_log(run_dir, phase, action, status, detail):
    - **Content-rules violations: {total} ({status}). Rules: {comma-separated rule codes}. Advisory only — see logs/run_log.md for full detail.** (from `content_rules_summary` computed in Phase 4 Step 4b; D-21: Gate 3 approval is NOT blocked by any violation count)
 
    **Part A — User options:**
-   1. **Proceed to format** -- Continue to formatting and publishing (triggers Part B)
+   1. **Proceed to format** -- Continue to formatting with the normalized output settings approved at Gate 1
    2. **Request gap-fill** — Defer to the synthesizer's gap-fill loop (see research-synthesize SKILL.md § Step: Gap-Fill Loop (SYNTH-11)). The synthesizer re-invokes collection internally against gap_analysis.md targets, capped at 20 additional pages and max 1 iteration.
    3. **Abort** -- Cancel the run
 
-   **Part B — Format preferences (only if user chose "Proceed to format" in Part A).** Ask three parameters in sequence via AskUserQuestion (each multiSelect single-choice, no freeform input). User responses come from a controlled enum, so the downstream research-format trigger phrase is safe to construct from these values (see Phase 6 security note). Output mode defaults to "Full Report" — it is not asked.
-
-   **Question 1 — Audience:**
-   ```python
-   audience_choice = AskUserQuestion(
-       question="Who is the primary audience for this research?",
-       options=[
-           {"label": "External — written for readers outside your organization", "value": "external"},
-           {"label": "Internal — written for your team or personal use", "value": "internal"},
-       ],
-       multiSelect=False,
-   )
-   ```
-
-   **Question 2 — Tone:**
-   ```python
-   tone_choice = AskUserQuestion(
-       question="What tone should the research use?",
-       options=[
-           {"label": "Professional — formal, polished, suitable for publication", "value": "professional"},
-           {"label": "Casual — conversational, accessible, lower formality", "value": "casual"},
-           {"label": "Technical — dense, specification-level, assumes domain expertise", "value": "technical"},
-       ],
-       multiSelect=False,
-   )
-   ```
-
-   **Question 3 — Output format:**
-
-   Build options based on `manifest.environment.tinytex_available`. If `false`, annotate PDF-inclusive options with `"(requires TinyTeX — not detected)"` rather than suppressing them — the user retains agency; Phase 6 graceful render fallback (D-09) handles any render failure.
-
-   ```python
-   tinytex_ok = manifest.get("environment", {}).get("tinytex_available", True)
-   pdf_suffix = "" if tinytex_ok else " (requires TinyTeX — not detected)"
-   format_choice = AskUserQuestion(
-       question="What output format do you want?",
-       options=[
-           {"label": f"Markdown + PDF — polished report with PDF rendering{pdf_suffix}", "value": "markdown+pdf"},
-           {"label": "HTML — web-optimized interactive output", "value": "html"},
-           {"label": "Markdown only — plain .md, no rendering", "value": "markdown-only"},
-       ],
-       multiSelect=False,
-   )
-   ```
-
-   Map `format_choice` to `quarto_output`:
-   - `"markdown+pdf"` → `quarto_output = "both"` (markdown report.md + PDF via Quarto)
-   - `"html"` → `quarto_output = "html"`
-   - `"markdown-only"` → `quarto_output = "none"`
-
-   **Write responses to manifest.json under `format_preferences`:**
+   **Output settings:** Verify these normalized fields exist in `manifest.json` before Phase 6. For legacy or resumed runs where they are absent, write defaults:
    ```json
    {
-     "format_preferences": {
-       "mode": "Full Report",
-       "audience": "external",
-       "tone": "professional",
-       "quarto_output": "both"
-     }
+     "depth": "standard",
+     "audience": "external",
+     "tone": "professional",
+     "render_targets": ["md", "html"]
    }
    ```
 
-   Normalize all values to lowercase. `mode` is always written as `"Full Report"` (not asked).
-
-   **Defaults if Gate 3 is skipped or the user bypasses (D-05):** `mode=Full Report`, `audience=external`, `tone=professional`, `quarto_output=html`. The orchestrator writes these defaults to `manifest.format_preferences` before Phase 6 begins if the field is absent.
+   `section_depth_overrides` is optional and defaults to `{}`. Per-section depth must use the same enum as global `depth`: `summary`, `standard`, `comprehensive`, or `audit`.
 
    See `references/checkpoint_protocol.md` Gate 3 for full specification.
 
@@ -868,25 +778,25 @@ def append_log(run_dir, phase, action, status, detail):
    update_phase_status(manifest_path, "formatting", "running")
    ```
 
-2. **Read format preferences & derive Quarto conditional (D-04, D-05).** Read `manifest.format_preferences` populated at Gate 3. If the field is absent (e.g., resumed run), apply defaults: `mode=Full Report, audience=External, tone=Professional, quarto_output=html`. Derive the conditional flag:
+2. **Read output preferences & derive Quarto conditional (D-04, D-05).** Read normalized output fields from `manifest.json`. If fields are absent (e.g., resumed run), apply defaults: `depth=standard`, `audience=external`, `tone=professional`, `render_targets=["md", "html"]`. Derive the conditional flag:
 
    ```python
    import json
    m = json.loads(Path(manifest_path).read_text())
-   fp = m.get("format_preferences") or {
-       "mode": "Full Report",
-       "audience": "External",
-       "tone": "Professional",
-       "quarto_output": "html",
-   }
-   mode = fp["mode"]
-   audience = fp["audience"]
-   tone = fp["tone"]
-   quarto_output = fp["quarto_output"].lower()  # "none" | "html" | "pdf" | "both"
-   produce_qmd = (quarto_output != "none")
+   depth = m.get("depth", "standard")
+   audience = m.get("audience", "external")
+   tone = m.get("tone", "professional")
+   render_targets = m.get("render_targets", ["md", "html"])
+   produce_qmd = any(target in render_targets for target in ("qmd", "html", "pdf"))
+   quarto_output = (
+       "both" if "html" in render_targets and "pdf" in render_targets
+       else "pdf" if "pdf" in render_targets
+       else "html" if "html" in render_targets
+       else "none"
+   )
    ```
 
-   If `quarto_output == "none"`: skip `.qmd` production **and** `quarto render`, produce `report.md` only, proceed directly to Gate 4. `report.md` is **always** the primary output — HTML/PDF are supplementary (D-09).
+   If `render_targets == ["md"]`: skip `.qmd` production **and** `quarto render`, produce `report.md` only, proceed directly to Gate 4. `report.md` is **always** the primary output — HTML/PDF are supplementary (D-09).
 
 3. **Invoke research-formatter agent.**
 
@@ -900,11 +810,11 @@ def append_log(run_dir, phase, action, status, detail):
 
        Compose output/report.md from section briefs and claim slices.
 
-       Format preferences from manifest:
-       - mode: {mode}
+       Output preferences from manifest:
+       - depth: {depth}
        - audience: {audience}
        - tone: {tone}
-       - quarto_output: {quarto_output}
+       - render_targets: {render_targets}
 
        Input files:
        - synthesis/section_briefs/*.json
@@ -929,7 +839,7 @@ def append_log(run_dir, phase, action, status, detail):
 
    After formatter returns, verify `output/report.md` exists before any publishing step.
 
-   **Security:** All format preference values are from controlled-enum Gate 3 responses (no freeform text), never from `user_request`. Do NOT concatenate `user_request` into the prompt — all user-controlled text stays bounded to AskUserQuestion enums (mitigates prompt-injection at this boundary).
+   **Security:** All normalized output preference values must be controlled enums approved at Gate 1 or defaults written by the orchestrator, never freeform values copied from `user_request`. Do NOT concatenate `user_request` into render commands or templates.
 
    The formatter produces:
    - `<run_dir>/output/report.md` -- Canonical final Markdown report (always produced).
@@ -937,7 +847,7 @@ def append_log(run_dir, phase, action, status, detail):
    - `<run_dir>/output/sections/*.md` and `*.meta.json` -- Section outputs and metadata.
    - `<run_dir>/output/formatter_audit.json` -- Composition validation audit.
 
-   Log: `append_log(run_dir, 'formatting', 'format_invoked', 'ok', f'research-formatter agent dispatched (mode={mode}, audience={audience}, tone={tone}, quarto_output={quarto_output})')`
+   Log: `append_log(run_dir, 'formatting', 'format_invoked', 'ok', f'research-formatter agent dispatched (depth={depth}, audience={audience}, tone={tone}, render_targets={render_targets})')`
 
    **GATE-3A — Post-formatting impact summary** (displayed after formatter returns, before Quarto publish):
 
@@ -1010,19 +920,7 @@ Publishing does not reinterpret claims, alter research conclusions, or become th
 
    Log: `append_log(run_dir, 'publishing', 'quarto_rendered', 'ok' if not render_failed else 'warn', f'quarto_output={quarto_output}, render_failed={render_failed}')`
 
-5. **CHECKPOINT GATE 4 (Pre-Self-Tuning).** Present run summary and proposed improvements via AskUserQuestion:
-   - Run statistics: total sources, total claims, pipeline duration, budget utilization
-   - Proposed improvements: crawl budget adjustments, prompt tweaks, ranking refinements, output structure changes
-
-   **User options:**
-   1. **Apply selected** -- Apply checked improvements (v2 feature; currently logs suggestions only)
-   2. **Skip all** -- Finalize without changes
-   3. **Abort** -- Should not normally abort at this stage
-
-   See `references/checkpoint_protocol.md` Gate 4 for full specification.
-
-   Log: `append_log(run_dir, 'gate_4', 'checkpoint_shown', 'ok', f'Gate 4: run complete, {N} improvements proposed')`
-   Log (after user responds): `append_log(run_dir, 'gate_4', 'checkpoint_response', 'ok', f'User chose: {choice}')`
+5. **Final run summary (non-blocking).** After publishing, write maintainer diagnostics and optional post-run improvement notes to the run log. This is not a checkpoint gate and must not block completion.
 
 6. **Update manifest (always mark publishing complete — D-09).** The publishing phase is marked `complete` regardless of `render_failed`. `report.md` is always the primary output; Quarto HTML/PDF are supplementary.
    ```python

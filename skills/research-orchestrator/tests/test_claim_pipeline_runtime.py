@@ -32,10 +32,10 @@ def make_run(tmp_path: Path) -> Path:
             "priorities": ["Consensus Mechanism", "Security Model"],
             "expected_source_types": ["docs"],
             "estimated_coverage_areas": ["consensus", "security"],
-            "section_depths": [
-                {"section": "Consensus Mechanism", "depth": "high"},
-                {"section": "Security Model", "depth": "medium"},
-            ],
+            "depth": "standard",
+            "section_depth_overrides": {
+                "Consensus Mechanism": "comprehensive"
+            },
         },
     )
     write_json(

@@ -22,6 +22,8 @@ Read all of these before beginning collection:
 - `manifest.json` -- budget_config (max_pages, max_per_domain, max_depth)
 
 Extract from manifest.json:
+- `collection_mode` -- `web_and_docs`, `docs_only`, `web_only`, or `metadata_only`
+- `source_channels.web` / `source_channels.documents` -- source channel intent
 - `budget_config.max_pages` (default: 75) -- global page budget
 - `budget_config.max_per_domain` (default: 15) -- per-domain page limit
 - `budget_config.max_depth` (default: 3) -- max crawl depth
@@ -38,7 +40,16 @@ Before any crawl, resolve the correct Python executable:
 python3 ~/.claude/skills/research-collect/scripts/resolve_env.py
 ```
 
-This discovers `crawl4ai_python` via: env var `CRAWL4AI_PYTHON` → pipx venvs → active virtualenv → PATH → system python3. Never use `python3 -c "import crawl4ai"` — always route through `resolve_env.py`. If `crawl4ai_python` is null and `manifest.collection_mode != "degraded"`, stop and emit the Gate-1 remediation block.
+This discovers `crawl4ai_python`, `docling_python`, and `playwright_ok`. Never use `python3 -c "import crawl4ai"` — always route through `resolve_env.py`.
+
+Honor `manifest.collection_mode`:
+
+- `web_and_docs` requires Crawl4AI, Playwright browser runtime, and Docling.
+- `docs_only` requires Docling and skips web crawling.
+- `web_only` requires Crawl4AI and Playwright browser runtime and skips document extraction.
+- `metadata_only` means collection is skipped; no extraction tools are required.
+
+If a required tool is missing, stop and emit the remediation command. Do not switch to another collection mode inside the collector.
 
 ### Concurrency Knobs
 
@@ -47,7 +58,7 @@ All concurrency values come from `manifest.runtime_profile.resolved` (set by `in
 ```bash
 MAX_CONCURRENT=$(jq -r '.runtime_profile.resolved.max_concurrent // 5' manifest.json)
 PER_DOMAIN_CAP=$(jq -r '.runtime_profile.resolved.per_domain_cap // 2' manifest.json)
-CRAWL4AI_PYTHON=$(jq -r '.runtime_profile.tools.crawl4ai_python // "python3"' manifest.json)
+CRAWL4AI_PYTHON=$(jq -r '.environment.tools.crawl4ai_python // "python3"' manifest.json)
 ```
 
 Pass these to the script:
@@ -211,7 +222,7 @@ Log `extraction_method` + `extraction_method_reason` fields appear in every JSON
 ### 2. Invocation
 
 ```bash
-DOCLING_PYTHON=$(jq -r '.runtime_profile.tools.docling_python // "python3"' manifest.json)
+DOCLING_PYTHON=$(jq -r '.environment.tools.docling_python // "python3"' manifest.json)
 mkdir -p collect/evidence/_staging
 
 printf '%s\n' "${doc_paths[@]}" > collect/_staging/doc_batch.txt
