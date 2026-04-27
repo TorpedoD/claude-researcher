@@ -60,12 +60,18 @@ Never execute `pip install`, `pipx install`, `npm install`, `playwright install`
 4. If new run: call `init_run.py` CLI to create run directory and manifest
 5. Proceed through the 7 pipeline phases with 4 checkpoint gates
 
+Budget shorthand: if the user starts a new request with `/research --50,10,2 topic`,
+the leading shorthand means `max_pages=50`, `max_per_domain=10`, and
+`max_depth=2`. Keep that leading token as a CLI budget override and do not include
+it in the research request text.
+
 ---
 
 ## Scripts
 
 - `scripts/init_run.py` -- Run initialization and resume detection
   - New run: `python3 ~/.claude/skills/research-orchestrator/scripts/init_run.py "research request" --max-pages 75 --max-per-domain 15 --max-depth 3`
+  - New run with budget shorthand: `python3 ~/.claude/skills/research-orchestrator/scripts/init_run.py --50,10,2 "research request"`
   - Resume list: `python3 ~/.claude/skills/research-orchestrator/scripts/init_run.py --list-interrupted`
   - Resume run: `python3 ~/.claude/skills/research-orchestrator/scripts/init_run.py --resume RUN_ID`
   - Functions: `next_run_id()`, `create_manifest()`, `update_phase_status()`, `find_interrupted_runs()`, `resume_run()`
@@ -130,6 +136,9 @@ def append_log(run_dir, phase, action, status, detail):
 **Steps:**
 
 1. **Accept research request.** Capture the user's freeform text. This becomes `user_request` in `manifest.json`.
+   If the request starts with a budget shorthand token like `--50,10,2`, treat it as
+   `max_pages,max_per_domain,max_depth` and exclude it from `user_request`. The
+   shorthand is valid only at the start of a new `/research` request.
 
 2. **Check for interrupted runs.** If the user invoked `/research` with no topic, call discovery mode:
    ```bash
@@ -147,6 +156,10 @@ def append_log(run_dir, phase, action, status, detail):
 3. **Initialize run directory.** For a new run, call init_run.py:
    ```bash
    python3 ~/.claude/skills/research-orchestrator/scripts/init_run.py "user request text" --max-pages 75 --max-per-domain 15 --max-depth 3
+   ```
+   If the user supplied leading budget shorthand, preserve it before the request:
+   ```bash
+   python3 ~/.claude/skills/research-orchestrator/scripts/init_run.py --50,10,2 "user request text"
    ```
    This creates `research/run-NNN-TIMESTAMP/` with `manifest.json`. Record the run directory path for all subsequent operations.
 

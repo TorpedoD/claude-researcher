@@ -164,3 +164,78 @@ def test_resume_cli_fails_for_unknown_run(tmp_path):
 
     assert result.returncode == 1
     assert "Run not found: run-404" in result.stderr
+
+
+def test_budget_shorthand_creates_manifest_with_overrides(tmp_path):
+    result = run_init(
+        tmp_path,
+        "--50,10,2",
+        "budget shorthand topic",
+        "--i-understand-degraded",
+    )
+
+    assert result.returncode == 0
+    run_dir = next((tmp_path / "research").glob("run-*"))
+    manifest = json.loads((run_dir / "manifest.json").read_text())
+    assert manifest["user_request"] == "budget shorthand topic"
+    assert manifest["budget_config"]["max_pages"] == 50
+    assert manifest["budget_config"]["max_per_domain"] == 10
+    assert manifest["budget_config"]["max_depth"] == 2
+
+
+def test_budget_shorthand_rejects_missing_component(tmp_path):
+    result = run_init(
+        tmp_path,
+        "--50,10",
+        "budget shorthand topic",
+        "--i-understand-degraded",
+    )
+
+    assert result.returncode == 2
+    assert "unrecognized arguments: --50,10" in result.stderr
+
+
+def test_budget_shorthand_rejects_non_integer_component(tmp_path):
+    result = run_init(
+        tmp_path,
+        "--50,x,2",
+        "budget shorthand topic",
+        "--i-understand-degraded",
+    )
+
+    assert result.returncode == 2
+    assert "invalid int value: 'x'" in result.stderr
+
+
+def test_budget_shorthand_rejects_non_positive_component(tmp_path):
+    result = run_init(
+        tmp_path,
+        "--0,10,2",
+        "budget shorthand topic",
+        "--i-understand-degraded",
+    )
+
+    assert result.returncode == 1
+    assert "Error: --max-pages must be a positive integer, got 0" in result.stderr
+
+
+def test_long_form_budget_overrides_still_create_manifest(tmp_path):
+    result = run_init(
+        tmp_path,
+        "long form budget topic",
+        "--max-pages",
+        "60",
+        "--max-per-domain",
+        "12",
+        "--max-depth",
+        "4",
+        "--i-understand-degraded",
+    )
+
+    assert result.returncode == 0
+    run_dir = next((tmp_path / "research").glob("run-*"))
+    manifest = json.loads((run_dir / "manifest.json").read_text())
+    assert manifest["user_request"] == "long form budget topic"
+    assert manifest["budget_config"]["max_pages"] == 60
+    assert manifest["budget_config"]["max_per_domain"] == 12
+    assert manifest["budget_config"]["max_depth"] == 4

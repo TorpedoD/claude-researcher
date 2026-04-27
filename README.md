@@ -98,6 +98,14 @@ Resume is built into `/research`. Running `/research` with no topic automaticall
 
 Default crawl budget is **75 pages**, 15 per domain, depth 3. Override at start:
 
+```
+/research --50,10,2 your research request
+```
+
+The shorthand is `--max-pages,max-per-domain,max-depth`. It must appear before the topic text.
+
+You can also call the initializer directly with explicit flags:
+
 ```bash
 python3 ~/.claude/skills/research-orchestrator/scripts/init_run.py \
   "your research request" \

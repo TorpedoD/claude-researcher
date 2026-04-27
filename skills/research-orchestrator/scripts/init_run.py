@@ -9,6 +9,7 @@ Both importable (for Phase 1 orchestrator) and CLI-invocable.
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -352,6 +353,27 @@ def resume_run(run_id: str, research_root: Optional[Path] = None) -> dict:
     }
 
 
+_BUDGET_SHORTHAND_RE = re.compile(r"^--([^,\s]+),([^,\s]+),([^,\s]+)$")
+
+
+def expand_budget_shorthand(argv: list[str]) -> list[str]:
+    """Expand leading --pages,domain,depth shorthand into long-form flags."""
+    if not argv:
+        return argv
+
+    match = _BUDGET_SHORTHAND_RE.match(argv[0])
+    if not match:
+        return argv
+
+    pages, per_domain, depth = match.groups()
+    return [
+        "--max-pages", pages,
+        "--max-per-domain", per_domain,
+        "--max-depth", depth,
+        *argv[1:],
+    ]
+
+
 def main():
     """CLI entry point for run initialization."""
     parser = argparse.ArgumentParser(
@@ -407,7 +429,7 @@ def main():
         "--fixture-dir", default=None,
         help="Fixture directory for replay mode (QUAL-01)"
     )
-    args = parser.parse_args()
+    args = parser.parse_args(expand_budget_shorthand(sys.argv[1:]))
 
     # Validate budget values are positive
     for name, val in [("--max-pages", args.max_pages),
