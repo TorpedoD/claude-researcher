@@ -1,7 +1,7 @@
 """Gate 1 validator with auto-regenerate loop (D-16/D-17/D-18/D-19).
 
-Runtime copy used by the research-orchestrator skill. Canonical implementation
-lives at ``research_orchestrator/gate1.py`` in the project repo; this file
+Runtime copy used by the research skill. Canonical implementation
+lives at ``research/gate1.py`` in the project repo; this file
 mirrors it so the skill can import without the repo package being on
 sys.path.
 """
@@ -16,7 +16,7 @@ VALIDATOR = (
     Path.home()
     / ".claude"
     / "skills"
-    / "research-orchestrator"
+    / "research"
     / "scripts"
     / "validate_artifact.py"
 )
@@ -24,7 +24,7 @@ SCHEMA = (
     Path.home()
     / ".claude"
     / "skills"
-    / "research-orchestrator"
+    / "research"
     / "references"
     / "question_tree.schema.json"
 )

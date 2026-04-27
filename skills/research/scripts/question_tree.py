@@ -1,8 +1,8 @@
 """7-layer question tree builder + bridge question helpers (Phase 10).
 
-Runtime copy used by the research-orchestrator skill. The canonical
-implementation lives in ``research_orchestrator/scope/question_tree.py``
-and ``research_orchestrator/scope/bridge.py`` in the project repo; this
+Runtime copy used by the research skill. The canonical
+implementation lives in ``research/scope/question_tree.py``
+and ``research/scope/bridge.py`` in the project repo; this
 file mirrors both so the skill can import without the repo package being
 on sys.path.
 

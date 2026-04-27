@@ -6,7 +6,7 @@ Guards against empty corpora (0 nodes or 0 edges): writes stub files
 (empty arrays / empty object) and appends an `empty_corpus_guard` warning
 row to run_log.md rather than silently propagating a malformed graph.
 
-Invoked from `research-orchestrator` SKILL.md Phase 3 Step 2d.
+Invoked from `research` SKILL.md Phase 3 Step 2d.
 Covered by tests/test_graph_postprocessing.py.
 """
 from __future__ import annotations

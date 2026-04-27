@@ -95,7 +95,7 @@ def test_section_graph_hints_cannot_introduce_unplanned_sections():
 
 
 def test_init_run_manifest_uses_claim_pipeline_phase_model():
-    init_run_path = ROOT / "skills" / "research-orchestrator" / "scripts" / "init_run.py"
+    init_run_path = ROOT / "skills" / "research" / "scripts" / "init_run.py"
     spec = importlib.util.spec_from_file_location("init_run", init_run_path)
     init_run = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(init_run)
@@ -127,7 +127,7 @@ def test_publishing_contract_requires_report_md_as_source_artifact():
 
 
 def test_publishing_instructions_update_publishing_phase_status():
-    orchestrator_skill = (ROOT / "skills" / "research-orchestrator" / "SKILL.md").read_text()
+    orchestrator_skill = (ROOT / "skills" / "research" / "SKILL.md").read_text()
 
     assert 'm["phase_status"]["publishing"]["render_failed"] = render_failed' in orchestrator_skill
     assert "append_log(run_dir, 'publishing', 'quarto_rendered'" in orchestrator_skill

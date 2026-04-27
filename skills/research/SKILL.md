@@ -1,5 +1,5 @@
 ---
-name: research-orchestrator
+name: research
 description: |
   Orchestrates multi-phase research pipeline: scoping, evidence collection,
   claim extraction, graph relationship enrichment, section brief synthesis,
@@ -96,11 +96,11 @@ it in the research request text.
 ## Scripts
 
 - `scripts/init_run.py` -- Run initialization and resume detection
-  - New run: `python3 ~/.claude/skills/research-orchestrator/scripts/init_run.py "research request" --max-pages 75 --max-per-domain 15 --max-depth 3 --collection-mode auto`
-  - New run with budget shorthand: `python3 ~/.claude/skills/research-orchestrator/scripts/init_run.py --50,10,2 "research request"`
-  - Resume list: `python3 ~/.claude/skills/research-orchestrator/scripts/init_run.py --list-interrupted`
-  - Resume run: `python3 ~/.claude/skills/research-orchestrator/scripts/init_run.py --resume RUN_ID`
-  - Machine-readable resume: `python3 ~/.claude/skills/research-orchestrator/scripts/init_run.py --resume RUN_ID --json`
+  - New run: `python3 ~/.claude/skills/research/scripts/init_run.py "research request" --max-pages 75 --max-per-domain 15 --max-depth 3 --collection-mode auto`
+  - New run with budget shorthand: `python3 ~/.claude/skills/research/scripts/init_run.py --50,10,2 "research request"`
+  - Resume list: `python3 ~/.claude/skills/research/scripts/init_run.py --list-interrupted`
+  - Resume run: `python3 ~/.claude/skills/research/scripts/init_run.py --resume RUN_ID`
+  - Machine-readable resume: `python3 ~/.claude/skills/research/scripts/init_run.py --resume RUN_ID --json`
   - Functions: `next_run_id()`, `create_manifest()`, `update_phase_status()`, `find_interrupted_runs()`, `resume_run()`, `resolve_collection_mode()`
 
 Machine-readable resume output is the workflow control source of truth. The
@@ -121,12 +121,12 @@ Do not treat resume output as a status report only. It determines the next phase
 to execute.
 
 - `scripts/validate_artifact.py` -- Runtime artifact validation
-  - Usage: `python3 ~/.claude/skills/research-orchestrator/scripts/validate_artifact.py <artifact_path> <schema_path>`
+  - Usage: `python3 ~/.claude/skills/research/scripts/validate_artifact.py <artifact_path> <schema_path>`
   - Returns JSON: `{"status": "pass"|"warn"|"error", "errors": [], "warnings": []}`
   - Used at checkpoint gates to surface validation results as warnings, not hard stops
 
 - `scripts/check_content_rules.py` -- Report content-rules scanner
-  - Usage: `python3 ~/.claude/skills/research-orchestrator/scripts/check_content_rules.py --target=report <report_md_path>`
+  - Usage: `python3 ~/.claude/skills/research/scripts/check_content_rules.py --target=report <report_md_path>`
   - Returns JSON stdout: `{"status": "pass"|"warn"|"error", "violations": [...], "summary": {"total": N, "by_rule": {...}}}`
   - Exit codes: 0=pass, 1=warn (violations found), 2=error (file missing, path traversal, oversized)
   - Checks: RULE-02 (URL cited >3x/section), CONS-01 (empty headers), CONS-02 (<2 sentences or >800 words/section), HIER-04 (bare code fences)
@@ -188,24 +188,24 @@ def append_log(run_dir, phase, action, status, detail):
 
 2. **Check for interrupted runs.** If the user invoked `/research` with no topic, call discovery mode:
    ```bash
-   python3 ~/.claude/skills/research-orchestrator/scripts/init_run.py
+   python3 ~/.claude/skills/research/scripts/init_run.py
    ```
    For an explicit list request, call:
    ```bash
-   python3 ~/.claude/skills/research-orchestrator/scripts/init_run.py --list-interrupted
+   python3 ~/.claude/skills/research/scripts/init_run.py --list-interrupted
    ```
    If interrupted runs exist, display them with their problem phases and completed phases. Ask the user whether to resume an existing run or start fresh. To resume, call:
    ```bash
-   python3 ~/.claude/skills/research-orchestrator/scripts/init_run.py --resume RUN_ID
+   python3 ~/.claude/skills/research/scripts/init_run.py --resume RUN_ID
    ```
 
 3. **Initialize run directory.** For a new run, call init_run.py:
    ```bash
-   python3 ~/.claude/skills/research-orchestrator/scripts/init_run.py "user request text" --max-pages 75 --max-per-domain 15 --max-depth 3
+   python3 ~/.claude/skills/research/scripts/init_run.py "user request text" --max-pages 75 --max-per-domain 15 --max-depth 3
    ```
    If the user supplied leading budget shorthand, preserve it before the request:
    ```bash
-   python3 ~/.claude/skills/research-orchestrator/scripts/init_run.py --50,10,2 "user request text"
+   python3 ~/.claude/skills/research/scripts/init_run.py --50,10,2 "user request text"
    ```
    This creates `research/run-NNN-TIMESTAMP/` with `manifest.json`. Record the run directory path for all subsequent operations.
 
@@ -368,7 +368,7 @@ def append_log(run_dir, phase, action, status, detail):
    - Write `scope/question_tree.json` via `write_question_tree(run_dir, tree)` (format per `references/question_tree.json.contract.md`)
    - Validate `plan.json`:
      ```bash
-     python3 ~/.claude/skills/research-orchestrator/scripts/validate_artifact.py research/run-NNN/scope/plan.json ~/.claude/skills/research-orchestrator/references/plan.schema.json
+     python3 ~/.claude/skills/research/scripts/validate_artifact.py research/run-NNN/scope/plan.json ~/.claude/skills/research/references/plan.schema.json
      ```
    - **Gate 1 layered-plan validator** (D-16..D-19): run the question tree validator with auto-regenerate loop.
      ```python
@@ -439,7 +439,7 @@ def append_log(run_dir, phase, action, status, detail):
 
 4. **Validate inventory.** On collector completion:
    ```bash
-   python3 ~/.claude/skills/research-orchestrator/scripts/validate_artifact.py <run_dir>/collect/inventory.json ~/.claude/skills/research-collect/references/inventory.schema.json
+   python3 ~/.claude/skills/research/scripts/validate_artifact.py <run_dir>/collect/inventory.json ~/.claude/skills/research-collect/references/inventory.schema.json
    ```
 
    Log: `append_log(run_dir, 'collection', 'inventory_validated', 'ok', f'inventory.json: {validation_status}')`
@@ -544,9 +544,9 @@ def append_log(run_dir, phase, action, status, detail):
 
 5. **Validate claim artifacts.**
    ```bash
-  python3 ~/.claude/skills/research-orchestrator/scripts/validate_artifact.py "$run_dir/synthesis/global_id_registry.json" ~/.claude/skills/research-synthesize/references/global_id_registry.schema.json
-  python3 ~/.claude/skills/research-orchestrator/scripts/validate_artifact.py "$run_dir/synthesis/claim_bank.json" ~/.claude/skills/research-synthesize/references/claim_bank.schema.json
-  python3 ~/.claude/skills/research-orchestrator/scripts/validate_artifact.py "$run_dir/synthesis/entity_index.json" ~/.claude/skills/research-synthesize/references/entity_index.schema.json
+  python3 ~/.claude/skills/research/scripts/validate_artifact.py "$run_dir/synthesis/global_id_registry.json" ~/.claude/skills/research-synthesize/references/global_id_registry.schema.json
+  python3 ~/.claude/skills/research/scripts/validate_artifact.py "$run_dir/synthesis/claim_bank.json" ~/.claude/skills/research-synthesize/references/claim_bank.schema.json
+  python3 ~/.claude/skills/research/scripts/validate_artifact.py "$run_dir/synthesis/entity_index.json" ~/.claude/skills/research-synthesize/references/entity_index.schema.json
    ```
 
    Log validation results. Validation warnings surface at Gate 3.
@@ -577,9 +577,9 @@ def append_log(run_dir, phase, action, status, detail):
    ```bash
    python3 ~/.claude/skills/research-synthesize/scripts/claim_pipeline.py build-entity-index --run-dir "$run_dir"
    python3 ~/.claude/skills/research-synthesize/scripts/claim_pipeline.py build-graph-artifacts --run-dir "$run_dir"
-   python3 ~/.claude/skills/research-orchestrator/scripts/validate_artifact.py "$run_dir/synthesis/entity_index.json" ~/.claude/skills/research-synthesize/references/entity_index.schema.json
-   python3 ~/.claude/skills/research-orchestrator/scripts/validate_artifact.py "$run_dir/synthesis/claim_graph_map.json" ~/.claude/skills/research-synthesize/references/claim_graph_map.schema.json
-   python3 ~/.claude/skills/research-orchestrator/scripts/validate_artifact.py "$run_dir/synthesis/section_graph_hints.json" ~/.claude/skills/research-synthesize/references/section_graph_hints.schema.json
+   python3 ~/.claude/skills/research/scripts/validate_artifact.py "$run_dir/synthesis/entity_index.json" ~/.claude/skills/research-synthesize/references/entity_index.schema.json
+   python3 ~/.claude/skills/research/scripts/validate_artifact.py "$run_dir/synthesis/claim_graph_map.json" ~/.claude/skills/research-synthesize/references/claim_graph_map.schema.json
+   python3 ~/.claude/skills/research/scripts/validate_artifact.py "$run_dir/synthesis/section_graph_hints.json" ~/.claude/skills/research-synthesize/references/section_graph_hints.schema.json
    ```
 
    `section_graph_hints.json` must list only planner-defined section IDs. Graph centrality is advisory and must not create or reorder sections.
@@ -650,11 +650,11 @@ def append_log(run_dir, phase, action, status, detail):
 
 5. **Validate all Slice 2 artifacts.**
    ```bash
-   python3 ~/.claude/skills/research-orchestrator/scripts/validate_artifact.py <run_dir>/synthesis/claim_bank.json ~/.claude/skills/research-synthesize/references/claim_bank.schema.json
-   python3 ~/.claude/skills/research-orchestrator/scripts/validate_artifact.py <run_dir>/synthesis/claim_graph_map.json ~/.claude/skills/research-synthesize/references/claim_graph_map.schema.json
-   python3 ~/.claude/skills/research-orchestrator/scripts/validate_artifact.py <run_dir>/synthesis/section_graph_hints.json ~/.claude/skills/research-synthesize/references/section_graph_hints.schema.json
-   for f in <run_dir>/synthesis/section_briefs/*.json; do python3 ~/.claude/skills/research-orchestrator/scripts/validate_artifact.py "$f" ~/.claude/skills/research-synthesize/references/section_brief.schema.json; done
-   for f in <run_dir>/synthesis/claim_slices/*.json; do python3 ~/.claude/skills/research-orchestrator/scripts/validate_artifact.py "$f" ~/.claude/skills/research-synthesize/references/claim_slice.schema.json; done
+   python3 ~/.claude/skills/research/scripts/validate_artifact.py <run_dir>/synthesis/claim_bank.json ~/.claude/skills/research-synthesize/references/claim_bank.schema.json
+   python3 ~/.claude/skills/research/scripts/validate_artifact.py <run_dir>/synthesis/claim_graph_map.json ~/.claude/skills/research-synthesize/references/claim_graph_map.schema.json
+   python3 ~/.claude/skills/research/scripts/validate_artifact.py <run_dir>/synthesis/section_graph_hints.json ~/.claude/skills/research-synthesize/references/section_graph_hints.schema.json
+   for f in <run_dir>/synthesis/section_briefs/*.json; do python3 ~/.claude/skills/research/scripts/validate_artifact.py "$f" ~/.claude/skills/research-synthesize/references/section_brief.schema.json; done
+   for f in <run_dir>/synthesis/claim_slices/*.json; do python3 ~/.claude/skills/research/scripts/validate_artifact.py "$f" ~/.claude/skills/research-synthesize/references/claim_slice.schema.json; done
    ```
 
    Log: `append_log(run_dir, 'section_brief_synthesis', 'slice2_artifacts_validated', 'ok', f'Slice 2 validation: {validation_status}')`
@@ -670,7 +670,7 @@ def append_log(run_dir, phase, action, status, detail):
 
    ```python
    import subprocess, json
-   script = Path.home() / ".claude/skills/research-orchestrator/scripts/check_content_rules.py"
+   script = Path.home() / ".claude/skills/research/scripts/check_content_rules.py"
    target = run_dir / "synthesis/research_notes.md"
    result = subprocess.run(["python3", str(script), "--target=raw", str(target)], capture_output=True, text=True)
    try:
@@ -903,7 +903,7 @@ Publishing does not reinterpret claims, alter research conclusions, or become th
 
 **Generate report.qmd, install Mermaid extension, copy quarto-pdf-base.yml, and render (Phase 12 — D-04, D-09, D-21, D-22, D-25, D-27).** Run the publish script, which derives `output/report.qmd` from canonical `output/report.md` before rendering. Render failures are logged and recorded as `render_failed` but do NOT fail the phase. Never pass `-shell-escape` to `quarto render`.
    ```bash
-   bash ~/.claude/skills/research-orchestrator/scripts/publish.sh \
+   bash ~/.claude/skills/research/scripts/publish.sh \
      --run-dir "$run_dir" --quarto-output "$quarto_output" --produce-qmd "$produce_qmd"
    ```
    Emits `QMD_STATUS=<ok|warn|skip>`, `MERMAID_INSTALL_STATUS=<ok|warn|skip>`, `QUARTO_YML_STATUS=<ok|warn|exists|skip>`, `RENDER_FAILED=<true|false>` on stdout. Parse these and log with `append_log`.

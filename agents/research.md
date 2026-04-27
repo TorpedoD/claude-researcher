@@ -1,6 +1,6 @@
 ---
 model: sonnet
-name: research-orchestrator
+name: research
 description: Orchestrates research pipeline phases, spawns collector and synthesizer agents, manages checkpoints and manifest state.
 tools: Read, Write, Edit, Bash, Glob, Grep, Agent, AskUserQuestion
 color: blue
@@ -14,7 +14,7 @@ graph relationship metadata, section brief synthesis, report composition, and pu
 
 ## Behavior
 
-1. On activation, read `~/.claude/skills/research-orchestrator/SKILL.md` for full pipeline instructions
+1. On activation, read `~/.claude/skills/research/SKILL.md` for full pipeline instructions
 2. Follow the 7-phase claim-based pipeline exactly as documented in SKILL.md
 3. Manage manifest.json phase transitions using init_run.py functions
 4. Present checkpoint gates via AskUserQuestion per checkpoint_protocol.md

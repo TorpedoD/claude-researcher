@@ -4,7 +4,7 @@
 **Location:** `research/run-NNN-TIMESTAMP/synthesis/gap_analysis.md`
 **Format:** Markdown
 **Producer:** research-synthesize
-**Consumer(s):** research-orchestrator Gate 3
+**Consumer(s):** research Gate 3
 
 ## Purpose
 

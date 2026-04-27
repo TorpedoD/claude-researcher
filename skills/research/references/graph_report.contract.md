@@ -3,8 +3,8 @@
 **Artifact:** `GRAPH_REPORT.md`
 **Location:** `research/run-NNN-TIMESTAMP/collect/graphify-out/GRAPH_REPORT.md`
 **Format:** Markdown
-**Producer:** graphify (invoked by research-orchestrator)
-**Consumer(s):** research-synthesize, research-orchestrator
+**Producer:** graphify (invoked by research)
+**Consumer(s):** research-synthesize, research
 
 ## Purpose
 

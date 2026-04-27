@@ -1,7 +1,7 @@
 """Scope directory path helpers (D-05/D-06/D-07).
 
-Runtime copy used by the research-orchestrator skill. The canonical
-implementation lives at ``research_orchestrator/paths.py`` in the project
+Runtime copy used by the research skill. The canonical
+implementation lives at ``research/paths.py`` in the project
 repo; this file mirrors it so the skill can import without the repo package
 being on sys.path.
 """

@@ -4,7 +4,7 @@
 **Location:** `research/run-NNN-TIMESTAMP/collect/inventory.json`
 **Format:** JSON
 **Producer:** research-collect
-**Consumer(s):** research-synthesize, research-orchestrator
+**Consumer(s):** research-synthesize, research
 **Validated by:** `validate_artifact.py` against `inventory.schema.json`
 
 ## Purpose

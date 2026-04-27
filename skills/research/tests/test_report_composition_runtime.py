@@ -10,8 +10,8 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[3]
 COMPOSER_SCRIPT = ROOT / "skills" / "research-format" / "scripts" / "report_composer.py"
-MAKE_QMD_SCRIPT = ROOT / "skills" / "research-orchestrator" / "scripts" / "make_qmd.py"
-PUBLISH_SCRIPT = ROOT / "skills" / "research-orchestrator" / "scripts" / "publish.sh"
+MAKE_QMD_SCRIPT = ROOT / "skills" / "research" / "scripts" / "make_qmd.py"
+PUBLISH_SCRIPT = ROOT / "skills" / "research" / "scripts" / "publish.sh"
 FORMAT_REFS = ROOT / "skills" / "research-format" / "references"
 
 

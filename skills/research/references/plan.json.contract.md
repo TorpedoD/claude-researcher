@@ -5,7 +5,7 @@
 **Artifact:** `plan.json`
 **Location:** `research/run-NNN-TIMESTAMP/scope/plan.json`
 **Format:** JSON
-**Producer:** research-orchestrator
+**Producer:** research
 **Consumer(s):** research-collect, research-synthesize
 **Validated by:** `validate_artifact.py` against `plan.schema.json`
 

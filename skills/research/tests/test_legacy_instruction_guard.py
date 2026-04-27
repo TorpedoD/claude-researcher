@@ -10,7 +10,7 @@ ACTIVE_DOCS = [
     ROOT / "skills" / "research-format" / "SKILL.md",
     ROOT / "skills" / "research-synthesize" / "SKILL.md",
     ROOT / "skills" / "research-synthesize" / "references" / "output-quality-spec.md",
-    ROOT / "skills" / "research-orchestrator" / "SKILL.md",
+    ROOT / "skills" / "research" / "SKILL.md",
 ]
 
 

@@ -1,7 +1,7 @@
 # Run Directory Schema
 
 **Version:** 2.0
-**Owner:** research-orchestrator
+**Owner:** research
 **Created by:** `init_run.py` (manifest.json and top-level directory only)
 
 ## Directory Tree
@@ -51,18 +51,18 @@ The following 9 subdirectories MUST exist within a run directory. They are creat
 
 | # | Path | Created By | Purpose |
 |---|------|-----------|---------|
-| 1 | `scope/` | research-orchestrator (at Step 8 of scope planning, lazily via mkdir(exist_ok=True)) | Holds scope.md, plan.json, question_tree.json |
+| 1 | `scope/` | research (at Step 8 of scope planning, lazily via mkdir(exist_ok=True)) | Holds scope.md, plan.json, question_tree.json |
 | 2 | `collect/` | research-collect | Root for all collection artifacts |
 | 3 | `collect/evidence/` | research-collect | Individual evidence markdown files with provenance headers |
 | 4 | `collect/quarantine/` | research-collect | Quarantined items excluded from synthesis |
-| 5 | `collect/graphify-out/` | research-orchestrator (legacy graphify invocation) | Raw Graphify outputs and diagnostics |
+| 5 | `collect/graphify-out/` | research (legacy graphify invocation) | Raw Graphify outputs and diagnostics |
 | 6 | `synthesis/` | research-synthesize | Root for claim bank, slices, graph hints, and briefs |
 | 7 | `synthesis/claim_slices/` | research-synthesize | Per-section claim/source slices |
 | 8 | `synthesis/section_briefs/` | research-synthesize | Per-section compact briefs |
 | 9 | `output/` | research-format | Canonical report, composition metadata, and publishing outputs |
 | 10 | `output/sections/` | research-format | Section-level markdown and metadata |
-| 11 | `checkpoints/` | research-orchestrator | Durable intermediate state for run resume |
-| 12 | `logs/` | research-orchestrator | Timestamped action logs |
+| 11 | `checkpoints/` | research | Durable intermediate state for run resume |
+| 12 | `logs/` | research | Timestamped action logs |
 
 ## Initialization
 
@@ -104,8 +104,8 @@ Subdirectories are created lazily by downstream phases on first use. This avoids
 | `output/report.html` | publishing phase | End user |
 | `output/report.pdf` | publishing phase | End user |
 | `output/publish_log.md` | publishing phase | End user, orchestrator |
-| `checkpoints/*` | research-orchestrator | research-orchestrator (resume) |
-| `logs/run_log.md` | research-orchestrator | End user (audit trail) |
+| `checkpoints/*` | research | research (resume) |
+| `logs/run_log.md` | research | End user (audit trail) |
 
 ## Context Slicing Rule
 

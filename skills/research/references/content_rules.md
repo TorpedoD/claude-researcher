@@ -106,7 +106,7 @@ mechanisms. They are not used by `claim_pipeline_v1` report composition.
 ## Invocation
 
 ```bash
-python3 ~/.claude/skills/research-orchestrator/scripts/check_content_rules.py --target=report <run_dir>/output/report.md
+python3 ~/.claude/skills/research/scripts/check_content_rules.py --target=report <run_dir>/output/report.md
 python3 ~/.claude/skills/research-format/scripts/report_composer.py audit --run-dir <run_dir>
 ```
 

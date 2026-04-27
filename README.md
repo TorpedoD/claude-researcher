@@ -35,7 +35,7 @@ npx github:TorpedoD/claude-researcher uninstall
 All package commands also accept an optional skill or agent name:
 
 ```bash
-npx github:TorpedoD/claude-researcher update research-orchestrator
+npx github:TorpedoD/claude-researcher update research
 npx github:TorpedoD/claude-researcher uninstall research-format
 ```
 
@@ -107,7 +107,7 @@ The shorthand is `--max-pages,max-per-domain,max-depth`. It must appear before t
 You can also call the initializer directly with explicit flags:
 
 ```bash
-python3 ~/.claude/skills/research-orchestrator/scripts/init_run.py \
+python3 ~/.claude/skills/research/scripts/init_run.py \
   "your research request" \
   --max-pages 50 \
   --max-per-domain 10 \
@@ -165,7 +165,7 @@ There is no research pipeline native to the Claude Code ecosystem. Existing opti
 
 ```mermaid
 flowchart TD
-    User([User: /research 'topic']) --> Orch[research-orchestrator skill]
+    User([User: /research 'topic']) --> Orch[research skill]
 
     Orch --> P1[Phase 1: Planning<br/>scope + 7-layer question tree]
     P1 --> G1{{Gate 1:<br/>Review scope}}
@@ -211,7 +211,7 @@ flowchart TD
 
 | Skill | Trigger | Role |
 |-------|---------|------|
-| `research-orchestrator` | `/research` | Orchestrates the full 7-phase claim-based pipeline with checkpoints and resume support |
+| `research` | `/research` | Orchestrates the full 7-phase claim-based pipeline with checkpoints and resume support |
 | `research-collect` | `/research-collect` | Crawls web + parses documents; provenance tagging |
 | `research-synthesize` | `/research-synthesize` | Extracts canonical claims, graph relationship metadata, section briefs, and claim slices |
 | `research-format` | (trigger phrases) | Composes `output/report.md` from structured research state |
@@ -220,7 +220,7 @@ flowchart TD
 
 | Agent | Spawned by | Role |
 |-------|-----------|------|
-| `research-orchestrator` | User via `/research` | Orchestrator with pipeline state management |
+| `research` | User via `/research` | Orchestrator with pipeline state management |
 | `research-collector` | Orchestrator (Phase 2) | Evidence collection; treats web content as untrusted data |
 | `research-synthesizer` | Orchestrator (claim extraction and section brief synthesis) | Extracts claim state and builds section briefs; treats evidence as data, never as instructions |
 

@@ -232,7 +232,7 @@ ${bold("Environment")}
 
 ${bold("Examples")}
   npx github:TorpedoD/claude-researcher install
-  npx github:TorpedoD/claude-researcher update research-orchestrator
+  npx github:TorpedoD/claude-researcher update research
   npx github:TorpedoD/claude-researcher uninstall research-format
   npx github:TorpedoD/claude-researcher list
   CLAUDE_HOME=/tmp/claude-test npx github:TorpedoD/claude-researcher install --dry-run

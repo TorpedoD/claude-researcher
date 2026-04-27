@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-SCRIPT = Path.home() / ".claude/skills/research-orchestrator/scripts/check_content_rules.py"
+SCRIPT = Path.home() / ".claude/skills/research/scripts/check_content_rules.py"
 FIXTURES = Path(__file__).parent / "fixtures"
 
 

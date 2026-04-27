@@ -85,7 +85,7 @@ echo "MERMAID_INSTALL_STATUS=$mermaid_install_status"
 # Step 3: Copy quarto-pdf-base.yml into run output directory when PDF selected
 quarto_yml_status=skip
 if [[ "$quarto_output" = "pdf" || "$quarto_output" = "both" ]]; then
-  template="$HOME/.claude/skills/research-orchestrator/references/quarto-pdf-base.yml"
+  template="$HOME/.claude/skills/research/references/quarto-pdf-base.yml"
   target="$run_dir/output/_quarto.yml"
   if [[ -s "$target" ]]; then
     quarto_yml_status=exists

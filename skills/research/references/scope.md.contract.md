@@ -5,7 +5,7 @@
 **Artifact:** `scope.md`
 **Location:** `research/run-NNN-TIMESTAMP/scope/scope.md`
 **Format:** Markdown
-**Producer:** research-orchestrator
+**Producer:** research
 **Consumer(s):** research-collect, research-synthesize
 
 ## Purpose

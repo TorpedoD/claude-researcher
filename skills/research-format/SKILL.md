@@ -1,6 +1,6 @@
 ---
 name: research-format
-description: Claim-sliced report composer for research-orchestrator Phase 6. Writes canonical output/report.md from section briefs and claim slices; publishing renders optional formats later.
+description: Claim-sliced report composer for research Phase 6. Writes canonical output/report.md from section briefs and claim slices; publishing renders optional formats later.
 allowed-tools: Read, Write, Edit, Bash, Glob, Grep, AskUserQuestion
 ---
 
@@ -14,7 +14,7 @@ outputs are generated later by the publishing phase from `output/report.md`.
 
 ## Required Inputs
 
-When invoked by `research-orchestrator`, use only:
+When invoked by `research`, use only:
 
 | Input | Path | Purpose |
 |---|---|---|

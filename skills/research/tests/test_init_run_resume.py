@@ -6,7 +6,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[3]
-SCRIPT = ROOT / "skills" / "research-orchestrator" / "scripts" / "init_run.py"
+SCRIPT = ROOT / "skills" / "research" / "scripts" / "init_run.py"
 
 
 def load_init_run():
