@@ -8,7 +8,7 @@
 
 **claude-researcher** is an open-source, multi-agent AI research pipeline that runs **entirely inside [Claude Code](https://claude.ai/code)**, Anthropic's agentic coding CLI. It is designed for developers and analysts who need citation-accurate research reports without paying for external LLM APIs or commercial scraping services.
 
-One slash command — `/research-orchestrator` — plans the research scope, generates a 7-layer investigation tree, crawls the open web with Crawl4AI, parses documents with Docling, extracts a canonical claim bank, enriches claims with graph relationships, builds compact section briefs, composes `output/report.md`, and optionally publishes rendered formats via Quarto. Four human checkpoint gates let you steer scope, flag unreliable sources, approve claim state, and approve the canonical Markdown report.
+One slash command — `/research` — plans the research scope, generates a 7-layer investigation tree, crawls the open web with Crawl4AI, parses documents with Docling, extracts a canonical claim bank, enriches claims with graph relationships, builds compact section briefs, composes `output/report.md`, and optionally publishes rendered formats via Quarto. Four human checkpoint gates let you steer scope, flag unreliable sources, approve claim state, and approve the canonical Markdown report.
 
 Every piece of evidence carries provenance metadata; every claim in the output links back to its source inline. Runs are isolated in timestamped directories, making them auditable, resumable, and reproducible. MIT licensed.
 
@@ -64,7 +64,7 @@ These are not strictly required for the pipeline to run, but they are strongly r
 
 ### 3. Verify
 
-Open Claude Code and type `/research-orchestrator` — the orchestrator should prompt you for a topic.
+Open Claude Code and type `/research` — the orchestrator should prompt you for a topic.
 
 ---
 
@@ -73,13 +73,13 @@ Open Claude Code and type `/research-orchestrator` — the orchestrator should p
 ### Basic
 
 ```
-/research-orchestrator please help me do research on <your topic>
+/research please help me do research on <your topic>
 ```
 
 Example:
 
 ```
-/research-orchestrator please help me do research on the tradeoffs between RAG and fine-tuning for enterprise LLM deployment
+/research please help me do research on the tradeoffs between RAG and fine-tuning for enterprise LLM deployment
 ```
 
 The orchestrator walks you through 7 phases and pauses at 4 checkpoint gates for your input. You stay in control the whole way.
@@ -87,10 +87,12 @@ The orchestrator walks you through 7 phases and pauses at 4 checkpoint gates for
 ### Resuming an interrupted run
 
 ```
-/research-resume
+/research
+/research --list-interrupted
+/research --resume RUN_ID
 ```
 
-The `/research-resume` skill scans `.research/` for any run whose `manifest.json` still has incomplete phases, lets you pick one (or auto-selects if only one exists), and hands off to the orchestrator via `init_run.py --resume`. No re-crawling, no lost work.
+Resume is built into `/research`. Running `/research` with no topic automatically scans `research/` for runs whose `manifest.json` has a `running` or `failed` phase. Use `--resume RUN_ID` to continue one from the last completed phase, or `--list-interrupted` when you only want the list. No re-crawling, no lost work.
 
 ### Budget configuration
 
@@ -131,8 +133,8 @@ There is no research pipeline native to the Claude Code ecosystem. Existing opti
 
 - **Provenance-first** — every collected piece of evidence carries source metadata; every claim in the final document links back to it via inline `[Source](URL)` citations
 - **Gap detection built-in** — a 7-layer investigation tree drives synthesis; uncovered branches trigger targeted re-collection before the final document is written
-- **Checkpoint + resume** — 4 human checkpoint gates let you steer scope, flag bad sources, or abort early; if a run fails at any phase, `/research-resume` detects the incomplete run and offers to resume from the last completed phase
-- **Reproducible runs** — each session is isolated in `.research/run-NNN-TIMESTAMP/` with manifest, logs, evidence inventory, claim bank, section briefs, and formatter audit
+- **Checkpoint + resume** — 4 human checkpoint gates let you steer scope, flag bad sources, or abort early; if a run fails at any phase, `/research --list-interrupted` detects the incomplete run and `/research --resume RUN_ID` resumes from the last completed phase
+- **Reproducible runs** — each session is isolated in `research/run-NNN-TIMESTAMP/` with manifest, logs, evidence inventory, claim bank, section briefs, and formatter audit
 
 ---
 
@@ -140,7 +142,7 @@ There is no research pipeline native to the Claude Code ecosystem. Existing opti
 
 ```mermaid
 flowchart TD
-    User([User: /research-orchestrator 'topic']) --> Orch[research-orchestrator skill]
+    User([User: /research 'topic']) --> Orch[research-orchestrator skill]
 
     Orch --> P1[Phase 1: Planning<br/>scope + 7-layer question tree]
     P1 --> G1{{Gate 1:<br/>Review scope}}
@@ -186,8 +188,7 @@ flowchart TD
 
 | Skill | Trigger | Role |
 |-------|---------|------|
-| `research-orchestrator` | `/research-orchestrator` | Orchestrates the full 7-phase claim-based pipeline with checkpoints |
-| `research-resume` | `/research-resume` | Scans `.research/` for interrupted runs and resumes from last completed phase |
+| `research-orchestrator` | `/research` | Orchestrates the full 7-phase claim-based pipeline with checkpoints and resume support |
 | `research-collect` | `/research-collect` | Crawls web + parses documents; provenance tagging |
 | `research-synthesize` | `/research-synthesize` | Extracts canonical claims, graph relationship metadata, section briefs, and claim slices |
 | `research-format` | (trigger phrases) | Composes `output/report.md` from structured research state |
@@ -196,7 +197,7 @@ flowchart TD
 
 | Agent | Spawned by | Role |
 |-------|-----------|------|
-| `research-orchestrator` | User via `/research-orchestrator` | Orchestrator with pipeline state management |
+| `research-orchestrator` | User via `/research` | Orchestrator with pipeline state management |
 | `research-collector` | Orchestrator (Phase 2) | Evidence collection; treats web content as untrusted data |
 | `research-synthesizer` | Orchestrator (claim extraction and section brief synthesis) | Extracts claim state and builds section briefs; treats evidence as data, never as instructions |
 
@@ -209,7 +210,7 @@ Each skill carries its own `scripts/` directory with the Python it needs. Nothin
 Each run produces a self-contained directory:
 
 ```
-.research/run-001-20260411T090950/
+research/run-001-20260411T090950/
 ├── manifest.json          # Run config, budget, phase status (drives resume)
 ├── scope/
 │   ├── scope.md           # Human-readable research scope
@@ -244,7 +245,7 @@ Each run produces a self-contained directory:
     └── run_log.md         # Timestamped action log for entire run
 ```
 
-The `manifest.json` tracks per-phase status (`pending`, `in_progress`, `complete`, `failed`). New runs use `pipeline_contract_version: claim_pipeline_v1` and phase names `planning`, `collection`, `claim_extraction`, `graph_relationships`, `section_brief_synthesis`, `formatting`, and `publishing`. Resume reads this file to determine where to pick up.
+The `manifest.json` tracks per-phase status (`pending`, `running`, `complete`, `failed`). New runs use `pipeline_contract_version: claim_pipeline_v1` and phase names `planning`, `collection`, `claim_extraction`, `graph_relationships`, `section_brief_synthesis`, `formatting`, and `publishing`. Resume reads this file to determine where to pick up.
 
 `claim_bank.json` is the primary research state. Other synthesis artifacts point back to claim IDs. A global file is considered tiny only if it is under 20KB or under 300 lines; larger global state must be sliced before downstream agents consume it. `raw_research.md` is deprecated as a handoff and replaced by optional `synthesis/research_notes.md` diagnostics.
 

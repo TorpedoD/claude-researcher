@@ -66,8 +66,9 @@ Never execute `pip install`, `pipx install`, `npm install`, `playwright install`
 
 - `scripts/init_run.py` -- Run initialization and resume detection
   - New run: `python3 ~/.claude/skills/research-orchestrator/scripts/init_run.py "research request" --max-pages 75 --max-per-domain 15 --max-depth 3`
-  - Resume check: `python3 ~/.claude/skills/research-orchestrator/scripts/init_run.py --resume`
-  - Functions: `next_run_id()`, `create_manifest()`, `update_phase_status()`, `find_interrupted_runs()`
+  - Resume list: `python3 ~/.claude/skills/research-orchestrator/scripts/init_run.py --list-interrupted`
+  - Resume run: `python3 ~/.claude/skills/research-orchestrator/scripts/init_run.py --resume RUN_ID`
+  - Functions: `next_run_id()`, `create_manifest()`, `update_phase_status()`, `find_interrupted_runs()`, `resume_run()`
 
 - `scripts/validate_artifact.py` -- Runtime artifact validation
   - Usage: `python3 ~/.claude/skills/research-orchestrator/scripts/validate_artifact.py <artifact_path> <schema_path>`
@@ -130,11 +131,18 @@ def append_log(run_dir, phase, action, status, detail):
 
 1. **Accept research request.** Capture the user's freeform text. This becomes `user_request` in `manifest.json`.
 
-2. **Check for interrupted runs.** Call `find_interrupted_runs()` via CLI:
+2. **Check for interrupted runs.** If the user invoked `/research` with no topic, call discovery mode:
    ```bash
-   python3 ~/.claude/skills/research-orchestrator/scripts/init_run.py --resume
+   python3 ~/.claude/skills/research-orchestrator/scripts/init_run.py
    ```
-   If interrupted runs exist, display them with their problem phases and completed phases. Ask the user whether to resume an existing run or start fresh.
+   For an explicit list request, call:
+   ```bash
+   python3 ~/.claude/skills/research-orchestrator/scripts/init_run.py --list-interrupted
+   ```
+   If interrupted runs exist, display them with their problem phases and completed phases. Ask the user whether to resume an existing run or start fresh. To resume, call:
+   ```bash
+   python3 ~/.claude/skills/research-orchestrator/scripts/init_run.py --resume RUN_ID
+   ```
 
 3. **Initialize run directory.** For a new run, call init_run.py:
    ```bash

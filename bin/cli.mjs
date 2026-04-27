@@ -150,7 +150,7 @@ function printNextSteps() {
   console.log(dim(`       pipx install docling==2.86.0`));
   console.log(dim(`       pip install graphifyy && graphify install`));
   console.log(dim(`       brew install quarto`));
-  console.log(`  2. Open Claude Code and run: ${cyan("/research-orchestrator")}`);
+  console.log(`  2. Open Claude Code and run: ${cyan("/research")}`);
 }
 
 function printGrouped(items, callback) {

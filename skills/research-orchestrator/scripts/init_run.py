@@ -72,6 +72,7 @@ PHASES = [
 # Valid state machine transitions for phase_status
 _VALID_TRANSITIONS = {
     ("pending", "running"),
+    ("running", "running"),
     ("running", "complete"),
     ("running", "failed"),
     ("failed", "running"),
@@ -159,11 +160,12 @@ def update_phase_status(manifest_path: Path, phase: str, status: str) -> dict:
     """Update a phase's status in manifest.json. Returns updated manifest.
 
     Validates state machine transitions:
-      pending -> running, running -> complete, running -> failed,
-      failed -> running (resume).
+      pending -> running, running -> running, running -> complete,
+      running -> failed, failed -> running (resume).
 
     Special cases:
       complete -> running: returns manifest unchanged (RUN-05 skip detection).
+      running -> running: returns manifest unchanged (resume re-entry).
       Any other invalid transition: raises ValueError.
 
     Args:
@@ -189,6 +191,8 @@ def update_phase_status(manifest_path: Path, phase: str, status: str) -> dict:
 
     # Check for skip detection (RUN-05)
     if current == "complete" and status == "running":
+        return manifest
+    if current == "running" and status == "running":
         return manifest
 
     # Validate transition
@@ -254,6 +258,100 @@ def find_interrupted_runs(research_root: Optional[Path] = None) -> list:
     return interrupted
 
 
+def _last_non_pending_phase(statuses: dict) -> Optional[str]:
+    """Return the latest phase that has started, respecting PHASES order."""
+    last = None
+    for phase in PHASES:
+        info = statuses.get(phase, {})
+        if isinstance(info, dict) and info.get("status") not in (None, "pending"):
+            last = phase
+    return last
+
+
+def _next_phase_to_run(statuses: dict) -> Optional[str]:
+    """Return the first non-complete phase, respecting PHASES order."""
+    for phase in PHASES:
+        info = statuses.get(phase, {})
+        if info.get("status") != "complete":
+            return phase
+    return None
+
+
+def _format_interrupted_runs(interrupted: list) -> None:
+    """Print interrupted runs in a stable human-readable format."""
+    if not interrupted:
+        print("No interrupted runs found.")
+        return
+
+    print(f"\n{'='*60}")
+    print(f"  {len(interrupted)} interrupted run(s) found:")
+    print(f"{'='*60}\n")
+    for run in interrupted:
+        problems = ", ".join(
+            f"{name} ({info['status']})"
+            for name, info in run["problem_phases"].items()
+        )
+        completed = ", ".join(run["completed_phases"]) or "none"
+        print(f"  Run: {run['run_id']}")
+        print(f"  Request: {run['user_request'][:80]}")
+        print(f"  Problem phases: {problems}")
+        print(f"  Completed phases: {completed}")
+        print()
+
+
+def resume_run(run_id: str, research_root: Optional[Path] = None) -> dict:
+    """Load and validate an interrupted run for resume.
+
+    Args:
+        run_id: Run directory name, e.g. run-001-20260427T000000.
+        research_root: Override for RESEARCH_ROOT (used by tests).
+
+    Returns:
+        Dict with run_id, run_dir, problem_phases, completed_phases,
+        last_phase, next_phase, and user_request.
+
+    Raises:
+        FileNotFoundError: If the run or manifest does not exist.
+        ValueError: If the manifest is malformed or the run is complete.
+    """
+    root = research_root or RESEARCH_ROOT
+    run_dir = root / run_id
+    manifest_path = run_dir / "manifest.json"
+    if not run_dir.exists():
+        raise FileNotFoundError(f"Run not found: {run_id}")
+    if not manifest_path.exists():
+        raise FileNotFoundError(f"Manifest not found for run: {run_id}")
+
+    try:
+        manifest = json.loads(manifest_path.read_text())
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Manifest is not valid JSON for run: {run_id}") from exc
+
+    statuses = manifest.get("phase_status")
+    if not isinstance(statuses, dict):
+        raise ValueError(f"Manifest has no phase_status for run: {run_id}")
+
+    problem_phases = {
+        name: info for name, info in statuses.items()
+        if isinstance(info, dict) and info.get("status") in ("running", "failed")
+    }
+    if not problem_phases:
+        raise ValueError(f"Run is not interrupted: {run_id}")
+
+    return {
+        "run_id": manifest.get("run_id", run_id),
+        "run_dir": str(run_dir),
+        "problem_phases": problem_phases,
+        "completed_phases": [
+            name for name, info in statuses.items()
+            if isinstance(info, dict) and info.get("status") == "complete"
+        ],
+        "last_phase": _last_non_pending_phase(statuses),
+        "next_phase": _next_phase_to_run(statuses),
+        "user_request": manifest.get("user_request", ""),
+    }
+
+
 def main():
     """CLI entry point for run initialization."""
     parser = argparse.ArgumentParser(
@@ -276,8 +374,12 @@ def main():
         help="Maximum crawl depth (default: 3)"
     )
     parser.add_argument(
-        "--resume", action="store_true",
-        help="Show interrupted runs and exit"
+        "--list-interrupted", action="store_true",
+        help="List interrupted runs and exit"
+    )
+    parser.add_argument(
+        "--resume", metavar="RUN_ID",
+        help="Load an interrupted run and print resume metadata"
     )
     parser.add_argument(
         "--performance-mode",
@@ -315,34 +417,41 @@ def main():
             print(f"Error: {name} must be a positive integer, got {val}", file=sys.stderr)
             sys.exit(1)
 
-    # Check for interrupted runs
-    interrupted = find_interrupted_runs()
-    if interrupted:
-        print(f"\n{'='*60}")
-        print(f"  {len(interrupted)} interrupted run(s) found:")
-        print(f"{'='*60}\n")
-        for run in interrupted:
-            problems = ", ".join(
-                f"{name} ({info['status']})"
-                for name, info in run["problem_phases"].items()
-            )
-            completed = ", ".join(run["completed_phases"]) or "none"
-            print(f"  Run: {run['run_id']}")
-            print(f"  Request: {run['user_request'][:80]}")
-            print(f"  Problem phases: {problems}")
-            print(f"  Completed phases: {completed}")
-            print()
-
-        if args.resume or not args.user_request:
-            print("Use --resume with a specific run to continue, or provide a new request.")
-            sys.exit(0)
+    if args.list_interrupted:
+        _format_interrupted_runs(find_interrupted_runs())
+        sys.exit(0)
 
     if args.resume:
-        print("No interrupted runs found.")
+        try:
+            run = resume_run(args.resume)
+        except (FileNotFoundError, ValueError) as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            sys.exit(1)
+
+        problems = ", ".join(
+            f"{name} ({info['status']})"
+            for name, info in run["problem_phases"].items()
+        )
+        completed = ", ".join(run["completed_phases"]) or "none"
+        print(f"Resume run: {run['run_id']}")
+        print(f"  Directory: {run['run_dir']}")
+        print(f"  Request: {run['user_request'][:80]}")
+        print(f"  Problem phases: {problems}")
+        print(f"  Completed phases: {completed}")
+        print(f"  Last phase: {run['last_phase'] or 'none'}")
+        print(f"  Next phase: {run['next_phase'] or 'none'}")
+        sys.exit(0)
+
+    interrupted = find_interrupted_runs()
+    if interrupted and not args.user_request:
+        _format_interrupted_runs(interrupted)
+        print("Use --resume RUN_ID to continue, or provide a new request.")
         sys.exit(0)
 
     if not args.user_request:
-        parser.error("user_request is required when starting a new run")
+        _format_interrupted_runs(interrupted)
+        print("Start a new research run with /research <topic>")
+        sys.exit(0)
 
     # Resolve performance mode
     perf_mode = args.performance_mode or os.environ.get("RESEARCH_PERF_MODE", "balanced")
