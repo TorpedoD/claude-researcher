@@ -1,0 +1,5 @@
+{
+  "source_ids": {"https://example.com/source": "src_001"},
+  "claim_ids": {"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": "claim_001"},
+  "section_ids": {"consensus mechanism": "consensus"}
+}

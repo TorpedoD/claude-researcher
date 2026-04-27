@@ -1,0 +1,17 @@
+{
+  "claims": [
+    {
+      "id": "claim_001",
+      "text": "Cardano uses Ouroboros as its proof-of-stake consensus protocol.",
+      "content_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "source_ids": ["src_001"],
+      "confidence": "high",
+      "salience": "high",
+      "include_in_report": true
+    }
+  ],
+  "metadata": {
+    "total_claims": 1,
+    "schema_version": "claim_bank.v1"
+  }
+}

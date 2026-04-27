@@ -64,8 +64,9 @@ def resolve_tools() -> dict:
     return {}
 
 PHASES = [
-    "planning", "collection", "graph",
-    "synthesis", "gap_detection", "formatting",
+    "planning", "collection", "claim_extraction",
+    "graph_relationships", "section_brief_synthesis",
+    "formatting", "publishing",
 ]
 
 # Valid state machine transitions for phase_status
@@ -133,6 +134,7 @@ def create_manifest(run_id: str, user_request: str, budget: dict, runtime_profil
     """
     return {
         "run_id": run_id,
+        "pipeline_contract_version": "claim_pipeline_v1",
         "created_at": datetime.now(timezone.utc).isoformat(),
         "user_request": user_request,
         "task_type": None,

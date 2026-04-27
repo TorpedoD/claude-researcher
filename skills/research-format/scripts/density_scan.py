@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """
-density_scan.py — Advisory density hints for the research formatter.
+density_scan.py — Legacy advisory density hints for the raw-research formatter.
+
+Deprecated for claim_pipeline_v1. New runs compose from section_briefs/*.json
+and claim_slices/*.json, so density_hints.json is not part of the main
+formatter handoff.
 
 Usage:
     python3 density_scan.py --input <raw_research.md> --output <density_hints.json>

@@ -1,0 +1,9 @@
+{
+  "section_id": "consensus",
+  "title": "Consensus Mechanism",
+  "claim_ids_used": ["claim_001"],
+  "source_ids_used": ["src_001"],
+  "word_count": 120,
+  "cross_links": ["security"],
+  "warnings": []
+}

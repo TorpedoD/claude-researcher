@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "section_meta.schema.json",
+  "title": "Section Metadata",
+  "description": "Metadata emitted beside each composed section.",
+  "type": "object",
+  "required": ["section_id", "title", "claim_ids_used", "source_ids_used", "word_count", "cross_links", "warnings"],
+  "properties": {
+    "section_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]*$"},
+    "title": {"type": "string", "minLength": 1},
+    "claim_ids_used": {
+      "type": "array",
+      "items": {"type": "string", "pattern": "^claim_[0-9]{3,}$"},
+      "uniqueItems": true
+    },
+    "source_ids_used": {
+      "type": "array",
+      "items": {"type": "string", "pattern": "^src_[0-9]{3,}$"},
+      "uniqueItems": true
+    },
+    "word_count": {"type": "integer", "minimum": 0},
+    "cross_links": {
+      "type": "array",
+      "items": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]*$"},
+      "uniqueItems": true
+    },
+    "warnings": {
+      "type": "array",
+      "items": {"type": "string"}
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,5 +1,7 @@
 # claim_index.json Contract
 
+> **Legacy compatibility only in `claim_pipeline_v1`:** `claim_bank.json` is the canonical claim artifact. If older consumers still need `claim_index.json`, emit it as a small compatibility artifact derived from `claim_bank.json`; do not make it the source of truth.
+
 **Artifact:** `claim_index.json`
 **Location:** `research/run-NNN-TIMESTAMP/synthesis/claim_index.json`
 **Format:** JSON

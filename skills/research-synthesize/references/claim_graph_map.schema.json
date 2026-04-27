@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "claim_graph_map.schema.json",
+  "title": "Claim Graph Map",
+  "description": "Advisory graph metadata keyed by claim ID.",
+  "type": "object",
+  "required": ["claims"],
+  "properties": {
+    "claims": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["claim_id", "related_claim_ids", "entities", "graph_cluster", "centrality"],
+        "properties": {
+          "claim_id": {"type": "string", "pattern": "^claim_[0-9]{3,}$"},
+          "related_claim_ids": {
+            "type": "array",
+            "items": {"type": "string", "pattern": "^claim_[0-9]{3,}$"},
+            "uniqueItems": true
+          },
+          "entities": {
+            "type": "array",
+            "items": {"type": "string", "minLength": 1},
+            "uniqueItems": true
+          },
+          "relationship_type": {"type": "string", "enum": ["mechanism", "dependency", "contrast", "evidence", "context", "unknown"]},
+          "graph_cluster": {"type": "string", "minLength": 1},
+          "centrality": {"type": "number", "minimum": 0, "maximum": 1}
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

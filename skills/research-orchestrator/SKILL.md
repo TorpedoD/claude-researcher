@@ -2,17 +2,35 @@
 name: research-orchestrator
 description: |
   Orchestrates multi-phase research pipeline: scoping, evidence collection,
-  knowledge graph construction, citation-rich synthesis, gap detection, and
-  Quarto publishing.
+  claim extraction, graph relationship enrichment, section brief synthesis,
+  report composition, and publishing.
 trigger: /research
 allowed-tools: Read, Write, Edit, Bash, Glob, Grep, Agent, AskUserQuestion
 ---
 
 # Research Orchestrator
 
-Accepts a freeform research request, plans scope, manages a 6-phase pipeline with 4 human checkpoint gates, and produces a polished, citation-rich research document. Every claim is traceable to its source, every gap is detected and addressed, and every run is reproducible and auditable.
+Accepts a freeform research request, plans scope, manages a 7-phase claim-based pipeline with 4 human checkpoint gates, and produces a polished, citation-rich research document. Every claim is traceable to its source, every gap is detected and addressed, and every run is reproducible and auditable.
 
-The orchestrator coordinates two subagents (collector and synthesizer), invokes Graphify for knowledge graph construction, hands off to the research-format skill for polishing, and publishes via Quarto.
+The orchestrator coordinates collection, claim extraction, graph relationship enrichment, section brief synthesis, report composition, and optional publishing. `output/report.md` is the canonical final report; HTML, PDF, and QMD are publishing products rendered from it.
+
+## Claim Pipeline Contract
+
+New runs use `manifest.pipeline_contract_version = "claim_pipeline_v1"` and these phases:
+
+```text
+planning
+→ collection
+→ claim_extraction
+→ graph_relationships
+→ section_brief_synthesis
+→ formatting
+→ publishing
+```
+
+`synthesis/claim_bank.json` is the canonical research state. `synthesis/raw_research.md` is deprecated; if a prose diagnostic is needed, write `synthesis/research_notes.md` and keep it out of the main handoff.
+
+A global file is tiny only when it is under 20KB or under 300 lines. Downstream agents must not read full `claim_bank.json`, full `inventory.json`, full graph files, or all section briefs unless the file qualifies as tiny. Otherwise they consume per-section slices.
 
 ---
 
@@ -40,7 +58,7 @@ Never execute `pip install`, `pipx install`, `npm install`, `playwright install`
 2. Orchestrator checks for interrupted runs via `find_interrupted_runs()`
 3. If interrupted runs exist: display them and offer to resume or start fresh
 4. If new run: call `init_run.py` CLI to create run directory and manifest
-5. Proceed through the 6 pipeline phases with 4 checkpoint gates
+5. Proceed through the 7 pipeline phases with 4 checkpoint gates
 
 ---
 
@@ -56,8 +74,8 @@ Never execute `pip install`, `pipx install`, `npm install`, `playwright install`
   - Returns JSON: `{"status": "pass"|"warn"|"error", "errors": [], "warnings": []}`
   - Used at checkpoint gates to surface validation results as warnings, not hard stops
 
-- `scripts/check_content_rules.py` -- Post-synthesis content-rules scanner (Phase 11 — D-20..D-22)
-  - Usage: `python3 ~/.claude/skills/research-orchestrator/scripts/check_content_rules.py <raw_research_md_path>`
+- `scripts/check_content_rules.py` -- Report content-rules scanner
+  - Usage: `python3 ~/.claude/skills/research-orchestrator/scripts/check_content_rules.py --target=report <report_md_path>`
   - Returns JSON stdout: `{"status": "pass"|"warn"|"error", "violations": [...], "summary": {"total": N, "by_rule": {...}}}`
   - Exit codes: 0=pass, 1=warn (violations found), 2=error (file missing, path traversal, oversized)
   - Checks: RULE-02 (URL cited >3x/section), CONS-01 (empty headers), CONS-02 (<2 sentences or >800 words/section), HIER-04 (bare code fences)
@@ -487,18 +505,89 @@ def append_log(run_dir, phase, action, status, detail):
 
 ---
 
-### Phase 3: Knowledge Graph
+### Phase 3: Claim Extraction
 
-**Objective:** Build a knowledge graph from collected evidence to inform synthesis structure.
+**Objective:** Extract stable, atomic claims from collected evidence and write canonical claim state.
+
+**Canonical outputs:**
+- `synthesis/global_id_registry.json`
+- `synthesis/claim_bank.json`
+- Optional legacy compatibility: `synthesis/claim_index.json` derived from `claim_bank.json`
+
+**Contract notes:** Claims are the primary unit. `categorized_evidence.json` is not canonical. Every claim has exactly one `primary_section_id`, stable `id`, normalized `content_hash`, `source_ids`, `confidence`, `salience`, and `include_in_report`.
 
 **Steps:**
 
 1. **Update manifest:**
    ```python
-   update_phase_status(manifest_path, "graph", "running")
+   update_phase_status(manifest_path, "claim_extraction", "running")
    ```
 
-2. **Invoke Graphify -- full SDK pipeline.**
+2. **Initialize stable IDs.** Run the claim helper before spawning extraction:
+   ```bash
+   python3 ~/.claude/skills/research-synthesize/scripts/claim_pipeline.py init-registry --run-dir "$run_dir"
+   ```
+   This creates or preserves `synthesis/global_id_registry.json`. IDs are generated once and never regenerated on resume.
+
+3. **Determine extraction granularity.** Count non-quarantined evidence files and record `manifest.evidence_count`.
+   - Small runs may use one `mode=full` synthesizer call if evidence fits context.
+   - Medium or large runs must use `mode=claim_batch` calls per source, per planned section, or per fixed evidence batch.
+   - No extraction agent may read all evidence when the corpus exceeds the tiny-file rule or the orchestrator batch threshold.
+
+4. **Spawn synthesizer for claim extraction.** The synthesizer writes claim deltas to `synthesis/claim_deltas/*.json`, then merges them into `claim_bank.json`.
+   ```
+   Agent(
+     subagent_type="research-synthesizer",
+     model="sonnet",
+     description="Extract claim state for: <user_request summary>",
+     prompt="""
+     mode: full
+     run_dir: <run_dir_path>
+
+     Execute claim extraction only.
+     Read scope/plan.json, scope/question_tree.json, collect/inventory.json, and selected collect/evidence/*.md batches.
+     For large runs, write one synthesis/claim_deltas/*.json file per source, section, or evidence batch, then merge.
+     Do not write raw_research.md.
+     Do not create planner sections.
+     Produce synthesis/global_id_registry.json, synthesis/claim_bank.json, and optional compatibility synthesis/claim_index.json.
+     Follow research-synthesize/SKILL.md Stage 1.
+     """
+   )
+   ```
+
+   Log: `append_log(run_dir, 'claim_extraction', 'agent_spawned', 'ok', 'research-synthesizer dispatched for claim extraction')`
+
+5. **Validate claim artifacts.**
+   ```bash
+   python3 ~/.claude/skills/research-orchestrator/scripts/validate_artifact.py "$run_dir/synthesis/global_id_registry.json" ~/.claude/skills/research-synthesize/references/global_id_registry.schema.json
+   python3 ~/.claude/skills/research-orchestrator/scripts/validate_artifact.py "$run_dir/synthesis/claim_bank.json" ~/.claude/skills/research-synthesize/references/claim_bank.schema.json
+   ```
+
+   Log validation results. Validation warnings surface at Gate 3.
+
+6. **Update manifest:**
+   ```python
+   update_phase_status(manifest_path, "claim_extraction", "complete")
+   ```
+
+### Phase 4: Graph Relationships
+
+**Objective:** Build relationship metadata from claims, entities, categories, and sources.
+
+**Canonical outputs:**
+- `synthesis/claim_graph_map.json`
+- `synthesis/section_graph_hints.json`
+
+**Graph rules:** Graph hints are advisory. They may enrich relationships inside planned sections, but may not create sections, reorder sections, override source quality, or force claim inclusion by centrality.
+
+**Steps:**
+
+1. **Update manifest:**
+   ```python
+   update_phase_status(manifest_path, "graph_relationships", "running")
+   ```
+
+2. **Invoke Graphify diagnostics after claims exist.**
 
    The graphify CLI has no `build` subcommand. Graph construction requires the Python SDK invoked through the pipx interpreter. Follow these sub-steps in order.
 
@@ -524,11 +613,11 @@ def append_log(run_dir, phase, action, status, detail):
    "
    ```
 
-   Log: `append_log(run_dir, 'graph', 'graphify_detect', 'ok', f'Detected {N} evidence files')`
+   Log: `append_log(run_dir, 'graph_relationships', 'graphify_detect', 'ok', f'Detected {N} evidence files')`
 
-   **Step 2c: Semantic extraction (LLM task).**
+   **Step 2c: Semantic extraction for graph diagnostics.**
 
-   Evidence files are markdown documents -- `graphify.extract.extract()` is AST-only (code files). For markdown evidence, the orchestrator performs semantic extraction to produce entity/relationship JSON.
+   Evidence files are markdown documents -- `graphify.extract.extract()` is AST-only (code files). For markdown evidence, use claim entities from `synthesis/claim_bank.json` as the primary semantic input. If richer evidence-level relationships are needed, the orchestrator may perform bounded semantic extraction, but it must not reinterpret evidence as a second synthesis pass.
 
    **Safety:** Only process files from `collect/evidence/` (post-quarantine). Never process files from `collect/quarantine/`.
 
@@ -567,9 +656,9 @@ def append_log(run_dir, phase, action, status, detail):
    - AMBIGUOUS: uncertain -- flag for review, do not omit
    - confidence_score: EXTRACTED=1.0, INFERRED=0.6-0.9, AMBIGUOUS=0.1-0.3
 
-   Merge all per-file extractions into a single JSON and write to `<run_dir>/.graphify_extract.json`.
+   Merge claim/entity extractions into a single JSON and write to `<run_dir>/.graphify_extract.json`.
 
-   Log: `append_log(run_dir, 'graph', 'semantic_extraction', 'ok', f'Extracted entities from {N} files ({inline_or_agent})')`
+   Log: `append_log(run_dir, 'graph_relationships', 'semantic_extraction', 'ok', f'Extracted entities from {N} files ({inline_or_agent})')`
 
    **Validation (T-03-01):** Before passing extraction JSON to `build_from_json`, validate that `nodes` and `edges` are arrays, each node has a string `id` and `label`, and each edge has string `source` and `target`. Reject malformed entries (log warning, skip entry) rather than aborting.
 
@@ -585,163 +674,122 @@ def append_log(run_dir, phase, action, status, detail):
    from pathlib import Path
    graph_data = json.loads((Path('<run_dir>/collect/graphify-out') / 'graph.json').read_text())
    if not graph_data.get('nodes'):
-       append_log(run_dir, 'graph', 'empty_corpus_guard', 'warn',
-                  'Graph has 0 edges — stub files written, synthesis will fall back to alphabetical ordering')
+       append_log(run_dir, 'graph_relationships', 'empty_corpus_guard', 'warn',
+                  'Graph has 0 edges — stub files written, graph hints will be sparse')
    ```
 
-   Log: `append_log(run_dir, 'graph', 'graphify_build', 'ok', f'Graph: {N} nodes, {M} edges, {K} communities')`
-   Log: `append_log(run_dir, 'graph', 'metrics_extracted', 'ok', f'Central: {N}, Isolated: {M}, Clusters: {K}')`
+   Log: `append_log(run_dir, 'graph_relationships', 'graphify_build', 'ok', f'Graph: {N} nodes, {M} edges, {K} communities')`
+   Log: `append_log(run_dir, 'graph_relationships', 'metrics_extracted', 'ok', f'Central: {N}, Isolated: {M}, Clusters: {K}')`
 
    **Step 2e: Cleanup.** Intermediate files (`.graphify_detect.json`, `.graphify_extract.json`) are cleaned up in Step 2d after graph construction. They live in `<run_dir>/` (not the evidence directory) to avoid contaminating evidence.
 
-3. **Graphify outputs.** Written to `<run_dir>/collect/graphify-out/`:
+3. **Graphify diagnostic outputs.** Written to `<run_dir>/collect/graphify-out/`:
    - `graph.json` -- Full graph data with nodes, edges, communities, central_nodes, isolated_nodes, and cluster_map (all fields injected per graph.json contract)
    - `GRAPH_REPORT.md` -- Plain-language report: communities, god nodes, surprising connections, suggested questions
    - `graph.html` -- Interactive HTML visualization of the knowledge graph (GRAPH-02)
-   - `central_nodes.json` -- Nodes with highest degree/betweenness (key themes for section headings per GRAPH-03)
-   - `isolated_nodes.json` -- Low-connectivity nodes (coverage gaps for gap_analysis.md per GRAPH-04)
-   - `cluster_map.json` -- Community-to-member mapping (thematic section structure per GRAPH-05)
+   - `central_nodes.json` -- Nodes with highest degree/betweenness (diagnostic central concepts only)
+   - `isolated_nodes.json` -- Low-connectivity nodes (diagnostic gap signals)
+   - `cluster_map.json` -- Community-to-member mapping (diagnostic relationship context)
 
-   **Note:** The synthesizer reads `central_nodes` to define primary section headings (GRAPH-03), `isolated_nodes` populate `gap_analysis.md` (GRAPH-04), and `cluster_map` structures thematic sections (GRAPH-05).
+   **Important:** These files are diagnostics. Downstream synthesis consumes compact files in `synthesis/`, not `GRAPH_REPORT.md`.
 
-4. **Update manifest:**
+4. **Build compact graph artifacts.**
+   ```bash
+   python3 ~/.claude/skills/research-synthesize/scripts/claim_pipeline.py build-graph-artifacts --run-dir "$run_dir"
+   python3 ~/.claude/skills/research-orchestrator/scripts/validate_artifact.py "$run_dir/synthesis/claim_graph_map.json" ~/.claude/skills/research-synthesize/references/claim_graph_map.schema.json
+   python3 ~/.claude/skills/research-orchestrator/scripts/validate_artifact.py "$run_dir/synthesis/section_graph_hints.json" ~/.claude/skills/research-synthesize/references/section_graph_hints.schema.json
+   ```
+
+   `section_graph_hints.json` must list only planner-defined section IDs. Graph centrality is advisory and must not create or reorder sections.
+
+5. **Update manifest:**
    ```python
-   update_phase_status(manifest_path, "graph", "complete")
+   update_phase_status(manifest_path, "graph_relationships", "complete")
    ```
 
 ---
 
-### Phase 4: Synthesis
+### Phase 5: Section Brief Synthesis
 
-**Objective:** Produce citation-rich research from collected evidence, informed by graph structure.
+**Objective:** Produce compact per-section memory and slices for report composition.
+
+**Canonical outputs:**
+- `synthesis/section_briefs/<section_id>.json`
+- `synthesis/claim_slices/<section_id>.json`
+- `synthesis/citation_audit.md`
+- `synthesis/gap_analysis.md`
+- Optional diagnostics: `synthesis/research_notes.md`
+
+**Slicing rules:** The report composer parent reads only section indexes, claim IDs per section, source IDs per section, graph hint summaries, and format preferences. Section agents receive one brief, referenced claims, referenced sources, relevant graph hints, and boundary rules.
 
 **Steps:**
 
 1. **Update manifest:**
    ```python
-   update_phase_status(manifest_path, "synthesis", "running")
+   update_phase_status(manifest_path, "section_brief_synthesis", "running")
    ```
 
-**Step 0 — Pre-synthesis preparation:**
-
-Before spawning the synthesizer, the orchestrator performs three setup tasks:
-
-**0a. Build citation registry** — Read `collect/inventory.json`. Assign global `[N]` integers to each URL in inventory traversal order. Write `synthesis/citation_registry.json`:
-```json
-{
-  "urls": [
-    {"n": 1, "url": "https://...", "source_title": "...", "source_tier": 1}
-  ],
-  "url_to_n": {"https://...": 1}
-}
-```
-This registry is frozen before synthesis begins. The synthesizer references it but never modifies it.
-
-**0b. Build evidence routing** — Cross-reference `collect/graphify-out/cluster_map.json` node memberships with evidence file frontmatter URLs via `collect/inventory.json`. Build `synthesis/evidence_routing.json`. Each entry records:
-- `evidence_file`: relative path to evidence file
-- `assigned_cluster`: primary cluster (highest node membership overlap)
-- `cross_cutting_clusters`: list of other clusters this file supports (if ≥2 clusters have membership)
-- `routing_confidence`: `"direct_graph_match"` | `"inferred_url_match"` | `"cross_cutting_heuristic"` | `"manual_fallback"`
-
-ROUTE-01: Files with cross_cutting_clusters get fed to ALL relevant cluster calls in fan-out mode.
-ROUTE-02: Track counts per confidence level; surface at Gate 3. If < 60% of files are `direct_graph_match`, log an advisory warning.
-
-**0c. Determine synthesis mode** — Count evidence files: `glob collect/evidence/*.md`. Record count to `manifest.json` as `evidence_count`.
-- If `evidence_count <= 30`: set `manifest.synthesis_mode = "single"` → proceed with single synthesizer call (existing path, mode="full")
-- If `evidence_count > 30`: set `manifest.synthesis_mode = "fanout"` → proceed with fan-out (see below)
-
-Log: `append_log(run_dir, 'synthesis', 'pre_synthesis_prep', 'ok', f'citation_registry built, evidence_routing built, synthesis_mode={synthesis_mode}')`
-
-2. **Spawn synthesizer agent.** This step is **unconditional and mandatory** — you MUST dispatch the synthesizer as a subagent via the Agent tool on every pipeline run, without exception. Never perform synthesis steps inline in the orchestrator. Never skip or defer this dispatch. If you are tempted to synthesize inline (e.g., the run is short, evidence is small), that is wrong — always dispatch.
+2. **Spawn synthesizer for section briefs and audits.**
 
    ```
    Agent(
-     prompt="Synthesize research for the run at <run_dir_path>.
-       Read these inputs:
-       - scope/scope.md, scope/plan.json, and scope/question_tree.json (research scope, plan, and layered question tree)
-       - collect/inventory.json (source catalog)
-       - collect/evidence/*.md (collected evidence with provenance)
-       - collect/graphify-out/graph.json (knowledge graph)
-       - collect/graphify-out/GRAPH_REPORT.md (graph analysis)
-       - collect/graphify-out/central_nodes.json (key themes)
-       - collect/graphify-out/cluster_map.json (section structure hints)
-       Write outputs to <run_dir_path>/synthesis/.
-       Follow the research-synthesize skill instructions for all synthesis procedures.",
      subagent_type="research-synthesizer",
      model="sonnet",
-     description="Synthesize research for: <user_request summary>"
+     description="Build section briefs for: <user_request summary>",
+     prompt="""
+     mode: section_briefs
+     run_dir: <run_dir_path>
+
+     Build compact section briefs, per-section claim slices, citation_audit.md, and gap_analysis.md.
+     Read claim_bank.json, section_graph_hints.json, scope/plan.json, and source metadata only as needed.
+     Do not write raw_research.md.
+     Do not read all evidence.
+     Every planned section must have claims or an explicit missing-evidence reason.
+     Follow research-synthesize/SKILL.md Stage 3 and Gate 3 readiness rules.
+     """
    )
    ```
 
-   Log: `append_log(run_dir, 'synthesis', 'agent_spawned', 'ok', 'research-synthesizer dispatched')`
+   Log: `append_log(run_dir, 'section_brief_synthesis', 'agent_spawned', 'ok', 'research-synthesizer dispatched for section briefs')`
 
-   > **Enforcement check:** After the Agent call returns, verify `logs/run_log.md` contains an `agent_spawned` entry for `research-synthesizer`. If it does not, the dispatch did not occur — abort with an error rather than continuing.
-
-   **Fan-out synthesis (when synthesis_mode == "fanout"):**
-
-   When `manifest.synthesis_mode == "fanout"`, instead of the single synthesizer call above, spawn one Agent call per cluster using `synthesis/evidence_routing.json` (respecting cross-cutting files):
-
-   ```python
-   for cluster_id, evidence_files in clusters.items():
-       Agent(
-           subagent_type="research-synthesizer",
-           prompt=f"""
-           mode: section_only
-           cluster_id: {cluster_id}
-           evidence_subset: {evidence_files}  # includes cross-cutting files for this cluster
-           citation_registry: {run_dir}/synthesis/citation_registry.json  # frozen, read-only
-           run_dir: {run_dir}
-
-           Write ONLY the ## cluster section for cluster {cluster_id}.
-           Follow FAN-01 template (one ## heading, ### subsections per ORDER-01, one Section References block).
-           Do NOT write Summary, TOC, Scope, Sources, or any other top-level sections.
-           Return the section markdown and claim delta list.
-           """
-       )
+3. **Normalize section artifacts.**
+   ```bash
+   python3 ~/.claude/skills/research-synthesize/scripts/claim_pipeline.py build-section-artifacts --run-dir "$run_dir"
    ```
 
-   After all cluster Agent calls complete, spawn an assembler call:
-
-   ```python
-   Agent(
-       subagent_type="research-synthesizer",
-       prompt=f"""
-       mode: assemble
-       run_dir: {run_dir}
-       section_files: [list of written section fragment files]
-
-       Assemble the final raw_research.md from section fragments.
-       Perform FAN-02 de-overlap pass (detect duplicate ### titles; consolidate by betweenness centrality).
-       Perform FAN-03 cross-reference repair (resolve broken (See [X](#slug)) anchors).
-       Write synthesis/assembly_overlaps.md documenting any overlaps found.
-       Write synthesis/raw_research.md (full assembled document with all headers).
-       Merge claim_index.json across sections.
-       Write synthesis/citation_audit.md and synthesis/gap_analysis.md.
-       """
-   )
-   ```
-
-   Log: `append_log(run_dir, 'synthesis', 'fanout_complete', 'ok', f'Fan-out: {len(clusters)} cluster calls + 1 assembler call')`
-
-3. **Synthesizer outputs.** Written to `<run_dir>/synthesis/`:
-   - `raw_research.md` -- Full research document with inline citations (format per `references/raw_research.contract.md` in research-synthesize)
-   - `claim_index.json` -- Claim-to-source mapping with metadata (format per `references/claim_index.json.contract.md`)
+4. **Synthesizer outputs.** Written to `<run_dir>/synthesis/`:
+   - `claim_bank.json` -- Canonical claim state (format per `references/claim_bank.contract.md` in research-synthesize)
+   - `section_briefs/*.json` -- Compact per-section briefs
+   - `claim_slices/*.json` -- Per-section claim/source slices
+   - `claim_graph_map.json` -- Compact claim relationship map
+   - `section_graph_hints.json` -- Compact advisory section graph hints
    - `citation_audit.md` -- Citation verification results (format per `references/citation_audit.contract.md`)
    - `gap_analysis.md` -- Coverage gaps and weak areas (format per `references/gap_analysis.contract.md`)
 
-4. **Validate claim index:**
+5. **Validate all Slice 2 artifacts.**
    ```bash
-   python3 ~/.claude/skills/research-orchestrator/scripts/validate_artifact.py <run_dir>/synthesis/claim_index.json ~/.claude/skills/research-synthesize/references/claim_index.schema.json
+   python3 ~/.claude/skills/research-orchestrator/scripts/validate_artifact.py <run_dir>/synthesis/claim_bank.json ~/.claude/skills/research-synthesize/references/claim_bank.schema.json
+   python3 ~/.claude/skills/research-orchestrator/scripts/validate_artifact.py <run_dir>/synthesis/claim_graph_map.json ~/.claude/skills/research-synthesize/references/claim_graph_map.schema.json
+   python3 ~/.claude/skills/research-orchestrator/scripts/validate_artifact.py <run_dir>/synthesis/section_graph_hints.json ~/.claude/skills/research-synthesize/references/section_graph_hints.schema.json
+   for f in <run_dir>/synthesis/section_briefs/*.json; do python3 ~/.claude/skills/research-orchestrator/scripts/validate_artifact.py "$f" ~/.claude/skills/research-synthesize/references/section_brief.schema.json; done
+   for f in <run_dir>/synthesis/claim_slices/*.json; do python3 ~/.claude/skills/research-orchestrator/scripts/validate_artifact.py "$f" ~/.claude/skills/research-synthesize/references/claim_slice.schema.json; done
    ```
 
-   Log: `append_log(run_dir, 'synthesis', 'claim_index_validated', 'ok', f'claim_index.json: {validation_status}')`
+   Log: `append_log(run_dir, 'section_brief_synthesis', 'slice2_artifacts_validated', 'ok', f'Slice 2 validation: {validation_status}')`
 
-4b. **Post-synthesis content-rules check (Phase 11 — D-20..D-22).** After the synthesizer writes `synthesis/raw_research.md`, run the lightweight content-rules scanner to detect RULE-02 (URL cited >3x per section), CONS-01 (empty section headers), CONS-02 (<2 sentences or >800 words per section), and HIER-04 (bare code fences). Violations are **WARNINGS ONLY** — they do NOT block synthesis or Gate 3 (D-21). See `~/.claude/skills/research-orchestrator/references/content_rules.md` for the rule contract.
+6. **Run Gate 3 readiness check.**
+   ```bash
+   python3 ~/.claude/skills/research-synthesize/scripts/claim_pipeline.py validate-readiness --run-dir "$run_dir"
+   ```
+
+   Gate 3 is blocked if readiness returns `status=fail`, including the failed-slice condition: any planned section has no claims and no explicit missing-evidence reason.
+
+7. **Optional diagnostics content-rules check.** If diagnostics write `synthesis/research_notes.md`, the scanner may be run in raw mode for advisory warnings. This is not part of the canonical handoff.
 
    ```python
    import subprocess, json
    script = Path.home() / ".claude/skills/research-orchestrator/scripts/check_content_rules.py"
-   target = run_dir / "synthesis/raw_research.md"
+   target = run_dir / "synthesis/research_notes.md"
    result = subprocess.run(["python3", str(script), "--target=raw", str(target)], capture_output=True, text=True)
    try:
        payload = json.loads(result.stdout)
@@ -757,13 +805,13 @@ Log: `append_log(run_dir, 'synthesis', 'pre_synthesis_prep', 'ok', f'citation_re
    content_rules_summary = {"status": status, "total": total, "violations": violations}
    ```
 
-   **Scanner error handling:** If the scanner exits 2 (error — file missing, path traversal, oversized), log with `status='warn'` (not `'fail'`), record detail, and proceed. Missing `raw_research.md` is itself a more serious pipeline error handled by the existing synthesis-output validation; this scanner is best-effort advisory.
+   **Scanner error handling:** If the scanner exits 2 (error — file missing, path traversal, oversized), log with `status='warn'` (not `'fail'`), record detail, and proceed. Missing `research_notes.md` is acceptable because diagnostics are optional.
 
    **Non-goal (QA-04, Phase 16):** QA-04 will later BLOCK Gate 3 on certain error-severity issues. Phase 11 is warn-only. Do NOT add blocking logic here.
 
 ---
 
-### Phase 5: Gap Detection
+### Gate 3: Claim State Review
 
 **Objective:** Detect coverage gaps and fill them with targeted collection and re-synthesis.
 
@@ -777,14 +825,14 @@ Log: `append_log(run_dir, 'synthesis', 'pre_synthesis_prep', 'ok', f'citation_re
    - Low-confidence claims (tier 4-5 sources only) > 30% of total claims
 
 3. **If gap-fill triggered:**
-   a. Update manifest: `update_phase_status(manifest_path, "gap_detection", "running")`
+   a. Keep `section_brief_synthesis` running while the gap-fill loop executes.
    b. Defer to the synthesizer — the canonical gap-fill execution path lives in the synthesizer skill, not the orchestrator.
 
    > **Note (SYNTH-11 canonical path):** Gap-fill is orchestrated by the synthesizer — see research-synthesize SKILL.md § Step: Gap-Fill Loop (SYNTH-11) for the canonical execution path. The orchestrator does NOT spawn the collector directly for gap-fill; it only evaluates thresholds and updates manifest state.
 
    c. Maximum 1 gap-fill iteration (no infinite loops) — enforced inside the synthesizer loop.
 
-4. **If gap-fill NOT triggered:** Update manifest: `update_phase_status(manifest_path, "gap_detection", "complete")` and set `phase_status.synthesis` to `complete` via the step below.
+4. **If gap-fill NOT triggered:** Continue to Gate 3 and mark `section_brief_synthesis` complete after approval.
 
 5. **CHECKPOINT GATE 3 (Post-Synthesis).** Present synthesis results AND collect format preferences via AskUserQuestion. Gate 3 is a **two-part** gate (D-03): (A) synthesis review + proceed decision, (B) format preferences that drive Phase 6.
 
@@ -792,7 +840,7 @@ Log: `append_log(run_dir, 'synthesis', 'pre_synthesis_prep', 'ok', f'citation_re
    - Strongest areas (sections with most tier-1/2 citations)
    - Weakest areas (sections with fewest citations or only tier-4/5)
    - Gap-fill status ("Not triggered" or "Triggered: N additional pages, M new claims")
-   - Total claims from claim_index.json
+   - Total claims from claim_bank.json
    - Citation coverage percentage
    - Average sources per claim
    - Citation audit pass/fail summary
@@ -877,14 +925,23 @@ Log: `append_log(run_dir, 'synthesis', 'pre_synthesis_prep', 'ok', f'citation_re
 
 6. **Update manifest:**
    ```python
-   update_phase_status(manifest_path, "synthesis", "complete")
+   update_phase_status(manifest_path, "section_brief_synthesis", "complete")
    ```
 
 ---
 
-### Phase 6: Format and Publish
+### Phase 6: Formatting / Report Composition
 
-**Objective:** Polish the raw research into a formatted document and publish via Quarto.
+**Objective:** Compose the canonical Markdown report from section briefs, claim slices, and formatter-owned presentation rules.
+
+**Canonical outputs:**
+- `output/assembly_plan.json`
+- `output/sections/<section_id>.md`
+- `output/sections/<section_id>.meta.json`
+- `output/report.md`
+- `output/formatter_audit.json`
+
+`output/report.md` must be useful by itself and must exist before publishing starts.
 
 **Steps:**
 
@@ -923,7 +980,7 @@ Log: `append_log(run_dir, 'synthesis', 'pre_synthesis_prep', 'ok', f'citation_re
        prompt=f"""
        run_dir: {run_dir}
 
-       Format synthesis/raw_research.md into a polished report.
+       Compose output/report.md from section briefs and claim slices.
 
        Format preferences from manifest:
        - mode: {mode}
@@ -932,30 +989,35 @@ Log: `append_log(run_dir, 'synthesis', 'pre_synthesis_prep', 'ok', f'citation_re
        - quarto_output: {quarto_output}
 
        Input files:
-       - synthesis/raw_research.md
-       - synthesis/claim_index.json (populate formatter_destination for all claims)
-       - synthesis/citation_registry.json
-       - synthesis/density_hints.json (run density_scan.py if not present)
+       - synthesis/section_briefs/*.json
+       - synthesis/claim_slices/*.json
+       - synthesis/section_graph_hints.json only as sliced per-section hints
+
+       Hard rule: fail if any planned section is missing its claim slice.
+       Do not read synthesis/claim_bank.json, collect/inventory.json, raw_research.md,
+       or full graph outputs during formatting.
 
        Output files:
-       - output/report.md (always)
-       - output/report.qmd (if quarto_output != 'none')
-       - output/formatter_decisions.md (required)
-       - Updated synthesis/claim_index.json
+       - output/assembly_plan.json
+       - output/sections/*.md
+       - output/sections/*.meta.json
+       - output/report.md
+       - output/formatter_audit.json
 
-       Run coverage_audit.py before returning. Surface PRES-02/CONF-01 violations.
+       Validate formatter_audit.json before returning. Surface audit errors.
        """
    )
    ```
 
-   After formatter returns, proceed with Quarto render (scripts/publish.sh — unchanged).
+   After formatter returns, verify `output/report.md` exists before any publishing step.
 
    **Security:** All format preference values are from controlled-enum Gate 3 responses (no freeform text), never from `user_request`. Do NOT concatenate `user_request` into the prompt — all user-controlled text stays bounded to AskUserQuestion enums (mitigates prompt-injection at this boundary).
 
    The formatter produces:
-   - `<run_dir>/output/report.md` -- Polished markdown with TOC, executive summary, inline citations, bibliography (always produced).
-   - `<run_dir>/output/report.qmd` -- Quarto-formatted version with callouts (only if `produce_qmd`).
-   - `<run_dir>/output/formatter_decisions.md` -- Audit log of claim movements, table/diagram decisions (required).
+   - `<run_dir>/output/report.md` -- Canonical final Markdown report (always produced).
+   - `<run_dir>/output/assembly_plan.json` -- Lightweight report assembly plan.
+   - `<run_dir>/output/sections/*.md` and `*.meta.json` -- Section outputs and metadata.
+   - `<run_dir>/output/formatter_audit.json` -- Composition validation audit.
 
    Log: `append_log(run_dir, 'formatting', 'format_invoked', 'ok', f'research-formatter agent dispatched (mode={mode}, audience={audience}, tone={tone}, quarto_output={quarto_output})')`
 
@@ -965,30 +1027,27 @@ Log: `append_log(run_dir, 'synthesis', 'pre_synthesis_prep', 'ok', f'citation_re
 
    | Metric | Value |
    |--------|-------|
-   | Raw word count | {wc synthesis/raw_research.md} |
+   | Section count | {count from output/assembly_plan.json} |
    | Report word count | {wc output/report.md} |
-   | Claims in body | {count from claim_index where formatter_destination=body} |
-   | Claims in supplementary | {count from claim_index where formatter_destination=supplementary} |
-   | Claims in references blocks | {count from claim_index where formatter_destination=references} |
-   | Claims in tables | {count from claim_index where formatter_destination=table:*} |
-   | Claims in diagrams | {count from claim_index where formatter_destination=diagram:*} |
-   | Claims merged | {count from claim_index where formatter_destination=merged:*} |
-   | Tables added | {count from formatter_decisions.md} |
-   | Diagrams added | {count from formatter_decisions.md} |
+   | Claims used | {count from output/sections/*.meta.json} |
+   | Repeated claims flagged | {count from output/formatter_audit.json} |
+   | Tables added | {count from formatter_audit.json if tracked} |
+   | Diagrams added | {count from formatter_audit.json if tracked} |
    | Sections at L0+L1 only | {count} |
    | Sections at L0+L1+L2 | {count} |
    | Routing confidence (direct_graph_match) | {count}/{total} from evidence_routing.json |
    | Assembly overlaps resolved | {count from assembly_overlaps.md if fanout, else N/A} |
 
-   **Blocking issues:** Surface any PRES-02 violations (claims without `formatter_destination`) or CONF-01 violations (contradictions hidden) as **errors**. The user must acknowledge before proceeding to Quarto publish.
+   **Blocking issues:** Surface any `formatter_audit.json` errors before publishing. The user must acknowledge before proceeding to the publishing phase.
 
    ```python
-   # GATE-3A blocking check
-   pres02_violations = [c for c in claim_index if c.get("formatter_destination") is None]
-   if pres02_violations:
-       print(f"ERROR (PRES-02): {len(pres02_violations)} claims have no formatter_destination. Review output/formatter_decisions.md before proceeding.")
+   # Report approval blocking check
+   audit = json.loads((run_dir / "output/formatter_audit.json").read_text())
+   audit_errors = audit.get("errors", [])
+   if audit_errors:
+       print(f"ERROR: formatter_audit.json reports {len(audit_errors)} errors. Review output/formatter_audit.json before publishing.")
        gate3a_choice = AskUserQuestion(
-           question="PRES-02 violations found. Proceed anyway (not recommended) or abort?",
+           question="Formatter audit errors found. Proceed anyway (not recommended) or abort?",
            options=[
                {"label": "Proceed anyway — acknowledge violation", "value": "proceed"},
                {"label": "Abort — fix violations first", "value": "abort"},
@@ -997,29 +1056,41 @@ Log: `append_log(run_dir, 'synthesis', 'pre_synthesis_prep', 'ok', f'citation_re
        )
        if gate3a_choice == "abort":
            update_phase_status(manifest_path, "formatting", "failed")
-           raise SystemExit("Aborted at GATE-3A due to PRES-02 violations.")
+           raise SystemExit("Aborted at report approval due to formatter audit errors.")
    ```
 
-   Log: `append_log(run_dir, 'formatting', 'gate3a_shown', 'ok' if not pres02_violations else 'warn', f'GATE-3A: pres02={len(pres02_violations)} violations')`
+   Log: `append_log(run_dir, 'formatting', 'report_approval_shown', 'ok' if not audit_errors else 'warn', f'audit_errors={len(audit_errors)}')`
 
-3b–4. **Install Mermaid extension, copy quarto-pdf-base.yml, and render (Phase 12 — D-04, D-09, D-21, D-22, D-25, D-27).** Run the publish script, which handles all three steps in sequence. Render failures are logged and recorded as `render_failed` but do NOT fail the phase. Never pass `-shell-escape` to `quarto render`.
+### Phase 7: Publishing
+
+**Objective:** Render optional output formats from `output/report.md`.
+
+Publishing consumes `output/report.md` and may produce:
+- `output/report.qmd`
+- `output/report.html`
+- `output/report.pdf`
+- `output/publish_log.md`
+
+Publishing does not reinterpret claims, alter research conclusions, or become the canonical output. If publishing is skipped or fails, `output/report.md` remains the final research report.
+
+**Generate report.qmd, install Mermaid extension, copy quarto-pdf-base.yml, and render (Phase 12 — D-04, D-09, D-21, D-22, D-25, D-27).** Run the publish script, which derives `output/report.qmd` from canonical `output/report.md` before rendering. Render failures are logged and recorded as `render_failed` but do NOT fail the phase. Never pass `-shell-escape` to `quarto render`.
    ```bash
    bash ~/.claude/skills/research-orchestrator/scripts/publish.sh \
      --run-dir "$run_dir" --quarto-output "$quarto_output" --produce-qmd "$produce_qmd"
    ```
-   Emits `MERMAID_INSTALL_STATUS=<ok|warn|skip>`, `QUARTO_YML_STATUS=<ok|warn|exists|skip>`, `RENDER_FAILED=<true|false>` on stdout. Parse these and log with `append_log`.
+   Emits `QMD_STATUS=<ok|warn|skip>`, `MERMAID_INSTALL_STATUS=<ok|warn|skip>`, `QUARTO_YML_STATUS=<ok|warn|exists|skip>`, `RENDER_FAILED=<true|false>` on stdout. Parse these and log with `append_log`.
 
    After the script returns, record `render_failed` in manifest and log:
    ```python
    m = json.loads(Path(manifest_path).read_text())
-   m.setdefault("phase_status", {}).setdefault("formatting", {})
-   if isinstance(m["phase_status"]["formatting"], str):
-       m["phase_status"]["formatting"] = {"status": m["phase_status"]["formatting"]}
-   m["phase_status"]["formatting"]["render_failed"] = render_failed
+   m.setdefault("phase_status", {}).setdefault("publishing", {})
+   if isinstance(m["phase_status"]["publishing"], str):
+       m["phase_status"]["publishing"] = {"status": m["phase_status"]["publishing"]}
+   m["phase_status"]["publishing"]["render_failed"] = render_failed
    Path(manifest_path).write_text(json.dumps(m, indent=2))
    ```
 
-   Log: `append_log(run_dir, 'formatting', 'quarto_rendered', 'ok' if not render_failed else 'warn', f'quarto_output={quarto_output}, render_failed={render_failed}')`
+   Log: `append_log(run_dir, 'publishing', 'quarto_rendered', 'ok' if not render_failed else 'warn', f'quarto_output={quarto_output}, render_failed={render_failed}')`
 
 5. **CHECKPOINT GATE 4 (Pre-Self-Tuning).** Present run summary and proposed improvements via AskUserQuestion:
    - Run statistics: total sources, total claims, pipeline duration, budget utilization
@@ -1035,9 +1106,9 @@ Log: `append_log(run_dir, 'synthesis', 'pre_synthesis_prep', 'ok', f'citation_re
    Log: `append_log(run_dir, 'gate_4', 'checkpoint_shown', 'ok', f'Gate 4: run complete, {N} improvements proposed')`
    Log (after user responds): `append_log(run_dir, 'gate_4', 'checkpoint_response', 'ok', f'User chose: {choice}')`
 
-6. **Update manifest (always mark formatting complete — D-09).** The formatting phase is marked `complete` regardless of `render_failed`. `report.md` is always the primary output; Quarto HTML/PDF are supplementary.
+6. **Update manifest (always mark publishing complete — D-09).** The publishing phase is marked `complete` regardless of `render_failed`. `report.md` is always the primary output; Quarto HTML/PDF are supplementary.
    ```python
-   update_phase_status(manifest_path, "formatting", "complete")
+   update_phase_status(manifest_path, "publishing", "complete")
    ```
 
 7. **Finalize.** Verify all phase_status entries in manifest.json are "complete". Log final run statistics to `<run_dir>/logs/run_log.md`.

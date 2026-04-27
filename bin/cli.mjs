@@ -3,18 +3,16 @@
 // Zero-dep Node CLI. Copies skills + agents from this package into ~/.claude/.
 //
 // Usage:
-//   npx github:TorpedoD/claude-researcher add           # install everything
-//   npx github:TorpedoD/claude-researcher add <name>    # install one skill or agent
-//   npx github:TorpedoD/claude-researcher list          # list available + installed
-//   npx github:TorpedoD/claude-researcher remove <name> # remove a skill or agent
+//   npx github:TorpedoD/claude-researcher install           # install everything
+//   npx github:TorpedoD/claude-researcher update            # replace installed package files
+//   npx github:TorpedoD/claude-researcher uninstall         # remove package files
+//   npx github:TorpedoD/claude-researcher list              # list available + installed
 //
 // Flags:
-//   --force / -f   overwrite existing without backup
-//   --dry-run      print actions without writing
-//   --no-backup    skip .bak backup when overwriting
-//   --help / -h    show help
+//   --dry-run       print actions without writing
+//   --help / -h     show help
 
-import { readdirSync, existsSync, mkdirSync, cpSync, rmSync, renameSync, statSync } from "node:fs";
+import { readdirSync, existsSync, mkdirSync, cpSync, rmSync } from "node:fs";
 import { join, dirname, resolve } from "node:path";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -49,8 +47,6 @@ for (const a of argv) {
 }
 const has = (...names) => names.some((n) => flags.has(n));
 const DRY = has("--dry-run");
-const FORCE = has("--force", "-f");
-const NO_BACKUP = has("--no-backup");
 const HELP = has("--help", "-h");
 
 const subcommand = positional[0];
@@ -71,11 +67,41 @@ function listAgents() {
     .map((d) => d.name.replace(/\.md$/, ""));
 }
 
-function isInstalledSkill(name) {
-  return existsSync(join(DST_SKILLS, name));
+function inventory() {
+  return [
+    ...listSkills().map((name) => ({
+      kind: "skill",
+      name,
+      src: join(SRC_SKILLS, name),
+      dst: join(DST_SKILLS, name),
+      parent: DST_SKILLS,
+      recursive: true,
+    })),
+    ...listAgents().map((name) => ({
+      kind: "agent",
+      name,
+      src: join(SRC_AGENTS, `${name}.md`),
+      dst: join(DST_AGENTS, `${name}.md`),
+      parent: DST_AGENTS,
+      recursive: false,
+    })),
+  ];
 }
-function isInstalledAgent(name) {
-  return existsSync(join(DST_AGENTS, `${name}.md`));
+
+function selectItems(name) {
+  const items = inventory();
+  if (!name) return items;
+  return items.filter((item) => item.name === name);
+}
+
+function requireItems(name) {
+  const items = selectItems(name);
+  if (name && items.length === 0) {
+    console.log(red(`Unknown skill or agent: ${name}`));
+    console.log(dim("Run with `list` to see what's available."));
+    process.exit(1);
+  }
+  return items;
 }
 
 // --- filesystem ops ----------------------------------------------------------
@@ -84,104 +110,37 @@ function ensureDir(p) {
   mkdirSync(p, { recursive: true });
 }
 
-function backup(path) {
-  if (DRY) return;
-  const bak = `${path}.bak`;
-  if (existsSync(bak)) rmSync(bak, { recursive: true, force: true });
-  renameSync(path, bak);
-}
+function copyItem(item, action) {
+  const exists = existsSync(item.dst);
+  ensureDir(item.parent);
+  if (!DRY && exists) rmSync(item.dst, { recursive: item.recursive, force: true });
+  if (!DRY) cpSync(item.src, item.dst, { recursive: item.recursive });
 
-function installSkill(name) {
-  const src = join(SRC_SKILLS, name);
-  if (!existsSync(src)) {
-    console.log(red(`  ✗ skill not found: ${name}`));
-    return false;
-  }
-  const dst = join(DST_SKILLS, name);
-  if (existsSync(dst)) {
-    if (FORCE && !NO_BACKUP) {
-      console.log(yellow(`  ⟳ ${name} exists — backing up to ${name}.bak`));
-      backup(dst);
-    } else if (FORCE && NO_BACKUP) {
-      console.log(yellow(`  ⟳ ${name} exists — overwriting`));
-      if (!DRY) rmSync(dst, { recursive: true, force: true });
-    } else {
-      console.log(yellow(`  ⟳ ${name} exists — backing up to ${name}.bak (use --force to skip prompt)`));
-      backup(dst);
-    }
-  }
-  if (!DRY) cpSync(src, dst, { recursive: true });
-  console.log(green(`  ✓ skill: ${name}`));
+  const verb = action === "update" && exists ? "replace" : "install";
+  const label = DRY ? `would ${verb}` : verb === "replace" ? "replaced" : "installed";
+  console.log(green(`  ✓ ${label} ${item.kind}: ${item.name}`));
   return true;
 }
 
-function installAgent(name) {
-  const src = join(SRC_AGENTS, `${name}.md`);
-  if (!existsSync(src)) {
-    console.log(red(`  ✗ agent not found: ${name}`));
+function removeItem(item) {
+  if (!existsSync(item.dst)) {
+    console.log(dim(`  - ${item.kind} not installed: ${item.name}`));
     return false;
   }
-  const dst = join(DST_AGENTS, `${name}.md`);
-  if (!DRY) cpSync(src, dst);
-  console.log(green(`  ✓ agent: ${name}`));
+  if (!DRY) rmSync(item.dst, { recursive: item.recursive, force: true });
+  console.log(green(`  ✓ ${DRY ? "would remove" : "removed"} ${item.kind}: ${item.name}`));
   return true;
 }
 
-function removeSkill(name) {
-  const dst = join(DST_SKILLS, name);
-  if (!existsSync(dst)) {
-    console.log(dim(`  - skill not installed: ${name}`));
-    return false;
-  }
-  if (!DRY) rmSync(dst, { recursive: true, force: true });
-  console.log(green(`  ✓ removed skill: ${name}`));
-  return true;
-}
-
-function removeAgent(name) {
-  const dst = join(DST_AGENTS, `${name}.md`);
-  if (!existsSync(dst)) {
-    console.log(dim(`  - agent not installed: ${name}`));
-    return false;
-  }
-  if (!DRY) rmSync(dst, { force: true });
-  console.log(green(`  ✓ removed agent: ${name}`));
-  return true;
-}
-
-// --- commands ----------------------------------------------------------------
-function cmdAdd() {
-  const skills = listSkills();
-  const agents = listAgents();
-
-  console.log(bold("→ Research Pipeline installer"));
+function printHeader(title) {
+  console.log(bold(`→ ${title}`));
   console.log(dim(`  source: ${PKG_ROOT}`));
   console.log(dim(`  target: ${CLAUDE_HOME}`));
   if (DRY) console.log(yellow("  (dry run — no files will be written)"));
   console.log();
+}
 
-  ensureDir(DST_SKILLS);
-  ensureDir(DST_AGENTS);
-
-  if (target) {
-    // specific thing
-    const asSkill = skills.includes(target);
-    const asAgent = agents.includes(target);
-    if (!asSkill && !asAgent) {
-      console.log(red(`Unknown skill or agent: ${target}`));
-      console.log(dim("Run with `list` to see what's available."));
-      process.exit(1);
-    }
-    if (asSkill) installSkill(target);
-    if (asAgent) installAgent(target);
-  } else {
-    console.log(bold("Skills"));
-    for (const s of skills) installSkill(s);
-    console.log();
-    console.log(bold("Agents"));
-    for (const a of agents) installAgent(a);
-  }
-
+function printNextSteps() {
   console.log();
   console.log(green("✓ Done."));
   console.log();
@@ -189,42 +148,65 @@ function cmdAdd() {
   console.log(`  1. Install runtime prerequisites (see README):`);
   console.log(dim(`       pipx install crawl4ai==0.8.6 && crawl4ai-setup`));
   console.log(dim(`       pipx install docling==2.86.0`));
-  console.log(dim(`       brew install --cask quarto`));
-  console.log(`  2. Install Graphify: ${cyan("https://github.com/safishamsi/graphify")}`);
-  console.log(`  3. Open Claude Code and run: ${cyan('/research "your topic"')}`);
+  console.log(dim(`       pip install graphifyy && graphify install`));
+  console.log(dim(`       brew install quarto`));
+  console.log(`  2. Open Claude Code and run: ${cyan("/research-orchestrator")}`);
+}
+
+function printGrouped(items, callback) {
+  const skills = items.filter((item) => item.kind === "skill");
+  const agents = items.filter((item) => item.kind === "agent");
+
+  if (skills.length > 0) {
+    console.log(bold("Skills"));
+    for (const item of skills) callback(item);
+  }
+  if (skills.length > 0 && agents.length > 0) console.log();
+  if (agents.length > 0) {
+    console.log(bold("Agents"));
+    for (const item of agents) callback(item);
+  }
+}
+
+// --- commands ----------------------------------------------------------------
+function cmdInstall() {
+  const items = requireItems(target);
+  printHeader("Research Pipeline installer");
+  printGrouped(items, (item) => copyItem(item, "install"));
+  printNextSteps();
+}
+
+function cmdUpdate() {
+  const items = requireItems(target);
+  printHeader("Research Pipeline updater");
+  printGrouped(items, (item) => copyItem(item, "update"));
+  console.log();
+  console.log(green("✓ Done."));
 }
 
 function cmdList() {
-  const skills = listSkills();
-  const agents = listAgents();
+  const items = inventory();
+  const skills = items.filter((item) => item.kind === "skill");
+  const agents = items.filter((item) => item.kind === "agent");
   console.log(bold("Skills") + dim(`  (source → ~/.claude/skills)`));
-  for (const s of skills) {
-    const status = isInstalledSkill(s) ? green("installed") : dim("not installed");
-    console.log(`  ${s}  ${status}`);
+  for (const item of skills) {
+    const status = existsSync(item.dst) ? green("installed") : dim("not installed");
+    console.log(`  ${item.name}  ${status}`);
   }
   console.log();
   console.log(bold("Agents") + dim(`  (source → ~/.claude/agents)`));
-  for (const a of agents) {
-    const status = isInstalledAgent(a) ? green("installed") : dim("not installed");
-    console.log(`  ${a}  ${status}`);
+  for (const item of agents) {
+    const status = existsSync(item.dst) ? green("installed") : dim("not installed");
+    console.log(`  ${item.name}  ${status}`);
   }
 }
 
-function cmdRemove() {
-  if (!target) {
-    console.log(red("Usage: remove <name>"));
-    process.exit(1);
-  }
-  const skills = listSkills();
-  const agents = listAgents();
-  const asSkill = skills.includes(target);
-  const asAgent = agents.includes(target);
-  if (!asSkill && !asAgent) {
-    console.log(red(`Unknown skill or agent: ${target}`));
-    process.exit(1);
-  }
-  if (asSkill) removeSkill(target);
-  if (asAgent) removeAgent(target);
+function cmdUninstall() {
+  const items = requireItems(target);
+  printHeader("Research Pipeline uninstaller");
+  printGrouped(items, removeItem);
+  console.log();
+  console.log(green("✓ Done."));
 }
 
 function cmdHelp() {
@@ -232,14 +214,15 @@ function cmdHelp() {
 ${dim("repo: https://github.com/TorpedoD/claude-researcher")}
 
 ${bold("Usage")}
-  npx github:TorpedoD/claude-researcher ${cyan("add")}              install all skills + agents
-  npx github:TorpedoD/claude-researcher ${cyan("add <name>")}       install one
+  npx github:TorpedoD/claude-researcher ${cyan("install")}          install all skills + agents
+  npx github:TorpedoD/claude-researcher ${cyan("install <name>")}   install one matching skill and/or agent
+  npx github:TorpedoD/claude-researcher ${cyan("update")}           replace all packaged skills + agents
+  npx github:TorpedoD/claude-researcher ${cyan("update <name>")}    replace one matching skill and/or agent
+  npx github:TorpedoD/claude-researcher ${cyan("uninstall")}        remove all packaged skills + agents
+  npx github:TorpedoD/claude-researcher ${cyan("uninstall <name>")} remove one matching skill and/or agent
   npx github:TorpedoD/claude-researcher ${cyan("list")}             show available / installed
-  npx github:TorpedoD/claude-researcher ${cyan("remove <name>")}    uninstall one
 
 ${bold("Flags")}
-  --force, -f     overwrite existing (still backs up to .bak unless --no-backup)
-  --no-backup     skip .bak backup when overwriting
   --dry-run       print what would happen without touching the filesystem
   --help, -h      show this message
 
@@ -248,10 +231,11 @@ ${bold("Environment")}
   NO_COLOR        disable ANSI colors
 
 ${bold("Examples")}
-  npx github:TorpedoD/claude-researcher add
-  npx github:TorpedoD/claude-researcher add research-orchestrator
+  npx github:TorpedoD/claude-researcher install
+  npx github:TorpedoD/claude-researcher update research-orchestrator
+  npx github:TorpedoD/claude-researcher uninstall research-format
   npx github:TorpedoD/claude-researcher list
-  CLAUDE_HOME=/tmp/claude-test npx github:TorpedoD/claude-researcher add --dry-run
+  CLAUDE_HOME=/tmp/claude-test npx github:TorpedoD/claude-researcher install --dry-run
 `);
 }
 
@@ -265,7 +249,10 @@ try {
   switch (subcommand) {
     case "add":
     case "install":
-      cmdAdd();
+      cmdInstall();
+      break;
+    case "update":
+      cmdUpdate();
       break;
     case "list":
     case "ls":
@@ -274,7 +261,7 @@ try {
     case "remove":
     case "uninstall":
     case "rm":
-      cmdRemove();
+      cmdUninstall();
       break;
     case "help":
       cmdHelp();

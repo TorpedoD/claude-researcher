@@ -1,0 +1,19 @@
+{
+  "canonical_report_path": "output/report.md",
+  "sections": [
+    {
+      "section_id": "consensus",
+      "title": "Consensus Mechanism",
+      "order": 1,
+      "section_brief_path": "synthesis/section_briefs/consensus.json",
+      "claim_slice_path": "synthesis/claim_slices/consensus.json",
+      "output_path": "output/sections/consensus.md",
+      "source_ids": ["src_001"]
+    }
+  ],
+  "format_preferences": {
+    "mode": "Full Report",
+    "audience": "external",
+    "tone": "professional"
+  }
+}

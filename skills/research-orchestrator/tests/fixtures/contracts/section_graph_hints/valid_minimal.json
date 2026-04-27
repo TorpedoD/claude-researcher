@@ -1,0 +1,21 @@
+{
+  "planned_section_ids": ["consensus", "security"],
+  "sections": [
+    {
+      "section_id": "consensus",
+      "central_entities": ["Ouroboros"],
+      "related_sections": ["security"],
+      "recommended_cross_links": [
+        {
+          "to": "security",
+          "reason": "Consensus assumptions affect security guarantees."
+        }
+      ]
+    }
+  ],
+  "graph_rules": {
+    "advisory_only": true,
+    "cannot_create_sections": true,
+    "cannot_reorder_sections": true
+  }
+}

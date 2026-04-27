@@ -4,86 +4,89 @@
 **Location:** `research/run-NNN-TIMESTAMP/synthesis/gap_analysis.md`
 **Format:** Markdown
 **Producer:** research-synthesize
-**Consumer(s):** research-orchestrator (gap-fill decision)
+**Consumer(s):** research-orchestrator Gate 3
 
 ## Purpose
 
-Identifies gaps, weaknesses, and unresolved issues in the research synthesis. Feeds the orchestrator's gap-fill decision: whether to trigger targeted re-collection and second-pass synthesis.
+Identifies weak or missing claim coverage before report composition. Gap
+analysis is based on planner-defined sections, `claim_bank.json`,
+`section_briefs/*.json`, source tiers, contradictions, and compact graph hints.
 
 ## Sections
 
 | Section | Required | Content |
 |---------|----------|---------|
-| Under-Supported Sections | Yes | Sections in raw_research.md with fewer than 2 tier-1 or tier-2 sources |
-| Weak-Sourced Claims | Yes | Claims supported only by tier 4-5 sources (low confidence) |
-| Missing Topic Categories | Yes | Topics from scope.md / plan.json with no evidence collected |
-| Unresolved Contradictions | Yes | Conflicts between sources that could not be resolved during synthesis |
-| Graph-Detected Gaps | Yes | isolated_nodes from graphify output (GRAPH-04) -- concepts with low connectivity indicating under-researched areas |
-| Shallow Areas | Yes | Topics with only surface-level coverage (single source, no depth) |
-| Gap-Fill Triggers | Yes | Threshold checks that determine whether gap-fill loop should activate |
+| Empty Planned Sections | Yes | Planned sections with no claims and explicit missing-evidence reasons |
+| Under-Supported Sections | Yes | Sections with too few tier 1-2 supporting sources |
+| Weak-Sourced Claims | Yes | Claims supported only by tier 4-5 or stale sources |
+| Missing Topic Categories | Yes | Planner subtopics with no claim coverage |
+| Unresolved Contradictions | Yes | Conflict IDs or claim pairs that remain unresolved |
+| Graph-Detected Gaps | Yes | Isolated claims/entities from `section_graph_hints.json` |
+| Gap-Fill Triggers | Yes | Threshold checks for targeted re-collection |
+
+## Gate 3 Failure Rule
+
+Gate 3 must fail if any planned section has no claims and no explicit
+missing-evidence reason in either:
+
+- the section brief `missing` field, or
+- this `gap_analysis.md` file.
 
 ## Gap-Fill Trigger Thresholds
 
 | Trigger | Threshold | Description |
 |---------|-----------|-------------|
-| Uncovered topics | > 25% | More than 25% of plan.json subtopics have no evidence |
-| Isolated nodes | > 20% | More than 20% of graph nodes are isolated_nodes |
-| Low-confidence claims | > 30% | More than 30% of claims supported only by tier 4-5 sources |
-
-If ANY trigger threshold is exceeded, the orchestrator should recommend gap-fill to the user at the checkpoint.
+| Uncovered topics | > 25% | More than 25% of planner sections have no claim coverage |
+| Isolated graph hints | > 20% | More than 20% of claims or entities are isolated |
+| Low-confidence claims | > 30% | More than 30% of claims are low confidence |
 
 ## Example Structure
 
 ```markdown
 # Gap Analysis
 
+## Empty Planned Sections
+
+- Security Model: no claims extracted; missing evidence reason: no strong source found for current validator security assumptions.
+
 ## Under-Supported Sections
 
 | Section | Tier 1-2 Sources | Total Sources | Status |
-|---------|-----------------|---------------|--------|
-| Theoretical Foundations | 0 | 1 | Under-supported |
-| Performance Benchmarks | 1 | 2 | Borderline |
+|---------|------------------|---------------|--------|
+| Consensus Mechanism | 2 | 3 | OK |
+| Security Model | 0 | 0 | Missing |
 
 ## Weak-Sourced Claims
 
-| Claim | Section | Best Source Tier | Sources |
-|-------|---------|-----------------|---------|
-| "Paxos overhead is 5x in edge networks" | Edge Constraints | Tier 4 | 1 forum post |
+| Claim ID | Section | Best Source Tier | Sources |
+|----------|---------|------------------|---------|
+| claim_031 | Ecosystem | 4 | src_014 |
 
 ## Missing Topic Categories
 
-- Paxos modifications for intermittent connectivity (0 sources)
-- Energy-efficient consensus for battery-powered edge nodes (0 sources)
+- Security Model: 0 claims.
 
 ## Unresolved Contradictions
 
-1. **BFT overhead:** 3x (Source A, tier 2) vs 1.4x (Source B, tier 3) -- cannot determine without benchmark reproduction
+- conflict_002: claim_011 and claim_018 disagree on throughput assumptions.
 
 ## Graph-Detected Gaps
 
-Isolated nodes from graphify analysis:
-- "Obscure Protocol" (degree: 1) -- mentioned once, no connections to main research themes
-- "Energy Harvesting" (degree: 0) -- appeared in one source, completely disconnected
-
-## Shallow Areas
-
-- Container orchestration at the edge: 1 blog post, no technical depth
-- Sensor network consensus: 1 paper abstract only
+- claim_088: isolated from related consensus claims.
 
 ## Gap-Fill Triggers
 
 | Trigger | Value | Threshold | Status |
 |---------|-------|-----------|--------|
-| Uncovered topics | 2/8 (25%) | > 25% | BORDERLINE |
-| Isolated nodes | 2/15 (13%) | > 20% | OK |
+| Uncovered topics | 1/8 (12.5%) | > 25% | OK |
+| Isolated graph hints | 3/47 (6%) | > 20% | OK |
 | Low-confidence claims | 3/47 (6%) | > 30% | OK |
 
-**Recommendation:** Borderline -- consider targeted collection for "Paxos modifications" and "Energy-efficient consensus"
+**Recommendation:** Proceed with noted missing evidence.
 ```
 
 ## Notes
 
-- The orchestrator reads gap-fill triggers to decide whether to recommend re-collection
-- If gap-fill activates, the collector runs a targeted pass and the synthesizer produces a second-pass synthesis
-- Graph-detected gaps (isolated_nodes) are particularly valuable because they reveal structural holes in the knowledge graph
-- This document feeds the checkpoint gate 3 summary table
+- This document feeds Gate 3 and targeted gap-fill.
+- It must not depend on `raw_research.md`.
+- Weak-source findings warn unless gap-fill thresholds are triggered.

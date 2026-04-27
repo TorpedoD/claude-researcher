@@ -59,26 +59,27 @@ Gates are mandatory unless the run is resuming past a completed phase.
 
 ---
 
-## Gate 3: Post-Synthesis
+## Gate 3: Claim State Review
 
-**Trigger:** After the synthesizer agent completes (including gap-fill if triggered), before the formatting phase.
+**Trigger:** After claim extraction, graph relationships, and section brief synthesis complete, before the formatting/report composition phase.
 
 **Data shown (summary table):**
 
 | Field | Source |
 |-------|--------|
-| Strongest areas | Sections with most tier-1/2 citations from `claim_index.json` |
-| Weakest areas | Sections with fewest citations or only tier-4/5 sources from `claim_index.json` |
+| Strongest areas | Sections with most high-confidence, high-salience claims from `claim_bank.json` |
+| Weakest areas | Sections with missing evidence, low-confidence claims, or weak source tiers from `claim_bank.json` and section briefs |
 | Gap-fill status | "Not triggered" / "Triggered: N additional pages collected, M new claims added" |
-| Total claims | `metadata.total_claims` from `claim_index.json` |
-| Citation coverage | `metadata.citation_coverage_pct` from `claim_index.json` |
-| Avg sources/claim | `metadata.avg_sources_per_claim` from `claim_index.json` |
+| Total claims | `metadata.total_claims` from `claim_bank.json` |
+| Included claims | Count of claims where `include_in_report=true` |
+| Avg sources/claim | Derived from `claims[].source_ids` in `claim_bank.json` |
 | Citation audit | Pass/fail summary from `citation_audit.md` |
-| Validation warnings | Any warnings from `validate_artifact.py` on `claim_index.json` |
+| Validation warnings | Any warnings from `validate_artifact.py` on `claim_bank.json` and section brief schemas |
+| Context slicing | Whether downstream inputs fit the tiny-file rule: under 20KB or under 300 lines |
 
 **User options:**
 
-1. **Proceed to format** -- Continue to formatting and publishing. The orchestrator marks synthesis as complete, collects **format preferences (Part B)**, then invokes the research-format skill.
+1. **Proceed to format** -- Continue to formatting/report composition. The orchestrator marks section brief synthesis as complete, collects **format preferences (Part B)**, then invokes the research-format skill.
 2. **Request gap-fill** -- Force a gap-fill iteration even if automatic thresholds were not met. The orchestrator spawns the collector with `--max-pages 20` targeting specific weak areas identified in `gap_analysis.md`, then re-runs the synthesizer for a second pass. Maximum 1 gap-fill iteration total (if gap-fill already ran automatically, this option is unavailable).
 3. **Abort** -- Cancel the run. The orchestrator marks synthesis as `failed` in the manifest and stops.
 
@@ -93,32 +94,36 @@ Collected via AskUserQuestion (controlled enum responses only — no freeform in
 | `tone` | Professional / Teachy | Professional |
 | `quarto_output` | none / html / pdf / both | html |
 
-**TinyTeX caveat:** If `manifest.environment.tinytex_available == false`, PDF and Both options are shown with the suffix `"(requires TinyTeX — not detected)"` rather than suppressed. The Phase 6 graceful render fallback (D-09) handles any render failure without aborting the formatting phase.
+**TinyTeX caveat:** If `manifest.environment.tinytex_available == false`, PDF and Both options are shown with the suffix `"(requires TinyTeX — not detected)"` rather than suppressed. The publishing phase graceful render fallback handles any render failure without invalidating `output/report.md`.
 
-Defaults are written to `manifest.format_preferences` if Gate 3 is skipped (e.g., resume past `synthesis: complete`) so Phase 6 always has a deterministic configuration.
+Defaults are written to `manifest.format_preferences` if Gate 3 is skipped (e.g., resume past `section_brief_synthesis: complete`) so formatting always has a deterministic configuration.
 
-**Resume behavior:** If the run resumes after synthesis is already `complete`, skip this gate. All synthesis artifacts exist on disk. The orchestrator ensures `manifest.format_preferences` is populated (defaults if absent) before Phase 6 runs.
+**Resume behavior:** If the run resumes after `section_brief_synthesis` is already `complete`, skip this gate. Claim bank, graph hints, and section brief artifacts already exist on disk. The orchestrator ensures `manifest.format_preferences` is populated (defaults if absent) before formatting runs.
 
 ---
 
-## Gate 4: Pre-Self-Tuning
+## Gate 4: Report Approval
 
-**Trigger:** After formatting is complete, before pipeline finalization.
+**Trigger:** After formatting/report composition writes `output/report.md`, before optional publishing.
 
 **Data shown (summary table):**
 
 | Field | Source |
 |-------|--------|
-| Proposed improvements | Auto-generated suggestions: crawl budget adjustments (was budget too tight or too generous?), prompt refinements for collector/synthesizer, source ranking tweaks, output structure changes |
-| Run statistics | Total sources collected, total claims indexed, pipeline duration, budget utilization (pages_used / max_pages), gap-fill iterations performed |
+| Canonical report | `output/report.md` |
+| Section count | `output/assembly_plan.json` |
+| Claims used | `output/sections/*.meta.json` and `output/formatter_audit.json` |
+| Source count | Cited source IDs from section metadata |
+| Formatter audit | `output/formatter_audit.json` status, warnings, and errors |
+| Publishing targets | `manifest.publish_preferences.targets` or defaults derived from format preferences |
 
 **User options:**
 
-1. **Apply selected** -- Apply checked improvements. In v1, this logs the selected suggestions to `logs/run_log.md` for manual review. In v2, selected improvements will be applied automatically to skill configuration.
-2. **Skip all** -- Finalize the run without applying any improvements. Log all suggestions to `logs/run_log.md` for future reference.
-3. **Abort** -- Should not normally abort at this stage (formatting is already complete). If selected, marks the run as incomplete but preserves all output artifacts.
+1. **Approve report** -- Proceed to the publishing phase if any non-Markdown targets were requested.
+2. **Skip publishing** -- Finalize with `output/report.md` only.
+3. **Abort** -- Preserve `output/report.md` and mark downstream publishing incomplete.
 
-**Resume behavior:** If the run resumes after formatting is already `complete`, skip this gate. The output artifacts already exist.
+**Resume behavior:** If the run resumes after formatting is already `complete`, skip this gate only if `output/report.md` and `output/formatter_audit.json` exist.
 
 ---
 
@@ -174,5 +179,5 @@ Same pattern as `gsd-discuss-phase` text mode. The orchestrator checks `workflow
 |------|---------|----------|---------|----------------|
 | 1 | Post-Planning | Subtopics, source types, budget | Confirm / Adjust / Abort | planning |
 | 2 | Post-Collection | Coverage %, tier counts, quarantine | Proceed / Flag issues / Abort | collection |
-| 3 | Post-Synthesis | Claims, coverage %, gap-fill status | Proceed to format / Request gap-fill / Abort | synthesis |
-| 4 | Pre-Self-Tuning | Run stats, proposed improvements | Apply selected / Skip all / Abort | formatting |
+| 3 | Claim State Review | Claim bank, section briefs, coverage, slicing status | Proceed to format / Request gap-fill / Abort | section_brief_synthesis |
+| 4 | Report Approval | report.md, assembly plan, formatter audit, publishing targets | Approve report / Skip publishing / Abort | formatting |

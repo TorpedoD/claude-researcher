@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "claim_index.schema.json",
   "title": "Claim Index",
-  "description": "Schema for the claim-to-source mapping produced by the synthesis phase",
+  "description": "Legacy compatibility schema. claim_bank.json is canonical in claim_pipeline_v1.",
   "type": "object",
   "required": ["claims", "metadata"],
   "properties": {

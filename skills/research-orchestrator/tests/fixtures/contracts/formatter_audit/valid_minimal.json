@@ -1,0 +1,7 @@
+{
+  "status": "pass",
+  "canonical_report_path": "output/report.md",
+  "section_meta_files": ["output/sections/consensus.meta.json"],
+  "warnings": [],
+  "errors": []
+}

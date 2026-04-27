@@ -1,6 +1,8 @@
 # Content Rules Contract (Phase 11)
 
-Consumed by: `scripts/check_content_rules.py` and `~/.claude/skills/research-synthesize/SKILL.md`.
+Consumed by: `scripts/check_content_rules.py` for Markdown checks. Claim coverage
+in `claim_pipeline_v1` is enforced by
+`~/.claude/skills/research-format/scripts/report_composer.py audit`.
 
 ## Scope
 
@@ -80,12 +82,14 @@ URLs appearing inside a `### Section References` block do NOT count toward the R
 - Paragraph length (HIER-04 ≤5 sentences): not machine-checked in Phase 11. **Scope: `output/report.md` only. `synthesis/raw_research.md` is EXEMPT** — the formatter owns paragraph-length enforcement.
 - CONS-02 sentence counting uses `[.!?](?:\s|$)` — counts punctuation-terminated sentence boundaries.
 
-## PRES-02 — Claim destination coverage
+## Claim coverage and citation style
 
-- **Target**: `output/report.md` (checked via coverage_audit.py)
-- **Rule**: Every claim in `synthesis/claim_index.json` must have a non-null `formatter_destination`
+- **Target**: `output/report.md`, `output/sections/*.meta.json`, `output/formatter_audit.json`
+- **Rule**: Every required claim in `synthesis/section_briefs/*.json` must appear in the matching section metadata.
+- **Rule**: Claim and source IDs used by a section must come from that section's `synthesis/claim_slices/<section_id>.json`.
+- **Rule**: Citations must use `[Source Title](url)`; numeric or mixed citation styles are errors.
 - **Severity**: error (blocking at Gate 3)
-- **Checker**: `~/.claude/skills/research-format/scripts/coverage_audit.py`
+- **Checker**: `~/.claude/skills/research-format/scripts/report_composer.py audit`
 
 ## CONF-01 — Contradiction visibility
 
@@ -94,19 +98,22 @@ URLs appearing inside a `### Section References` block do NOT count toward the R
 - **Severity**: warn
 - **Checker**: manual diff or scripted grep
 
-## SEL-01 — URL coverage
+## Legacy raw-research coverage
 
-- **Target**: `output/report.md`
-- **Rule**: Every URL in `synthesis/citation_registry.json` must be cited at least once in the report body or section references
-- **Severity**: warn
-- **Checker**: `coverage_audit.py` (secondary check)
+`coverage_audit.py`, `synthesis/claim_index.json`, and
+`synthesis/citation_registry.json` are legacy raw-research mechanisms. They are
+not used by `claim_pipeline_v1` report composition.
 
 ## Invocation
 
 ```bash
-python3 ~/.claude/skills/research-orchestrator/scripts/check_content_rules.py <path-to-raw_research.md>
+python3 ~/.claude/skills/research-orchestrator/scripts/check_content_rules.py --target=report <run_dir>/output/report.md
+python3 ~/.claude/skills/research-format/scripts/report_composer.py audit --run-dir <run_dir>
 ```
 
 ## Integration in Pipeline
 
-After synthesis produces `raw_research.md`, the orchestrator runs this scanner and logs results via `append_log(run_dir, 'synthesis', 'content_rules_check', 'ok'|'warn', ...)`. Violations are warnings, not hard stops — synthesis is not blocked. Gate 3 displays the violation count.
+After formatting produces `output/report.md`, the orchestrator runs the report
+scanner and formatter audit. Content-rule violations are warnings unless the
+formatter audit reports errors. Formatter audit errors block publishing unless
+the user explicitly acknowledges the violation.

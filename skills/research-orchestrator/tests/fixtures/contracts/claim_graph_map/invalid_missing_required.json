@@ -1,0 +1,10 @@
+{
+  "claims": [
+    {
+      "claim_id": "claim_001",
+      "related_claim_ids": [],
+      "entities": ["Ouroboros"],
+      "graph_cluster": "cluster_1"
+    }
+  ]
+}

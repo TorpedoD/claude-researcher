@@ -1,5 +1,7 @@
 # raw_research.md Contract
 
+> **Deprecated in `claim_pipeline_v1`:** `raw_research.md` is no longer the canonical synthesis handoff. New runs should use `synthesis/claim_bank.json`, `synthesis/section_briefs/*.json`, and `synthesis/claim_slices/*.json`. If prose diagnostics are useful, write `synthesis/research_notes.md`; it is optional and must not be required by report composition.
+
 **Artifact:** `raw_research.md`
 **Location:** `research/run-NNN-TIMESTAMP/synthesis/raw_research.md`
 **Format:** Markdown

@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "claim_bank.schema.json",
+  "title": "Claim Bank",
+  "description": "Canonical claim-based research state.",
+  "type": "object",
+  "required": ["claims", "metadata"],
+  "properties": {
+    "claims": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "text",
+          "content_hash",
+          "primary_section_id",
+          "source_ids",
+          "confidence",
+          "salience",
+          "include_in_report"
+        ],
+        "properties": {
+          "id": {"type": "string", "pattern": "^claim_[0-9]{3,}$"},
+          "text": {"type": "string", "minLength": 1},
+          "content_hash": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+          "primary_section_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]*$"},
+          "source_ids": {
+            "type": "array",
+            "items": {"type": "string", "pattern": "^src_[0-9]{3,}$"},
+            "minItems": 1,
+            "uniqueItems": true
+          },
+          "confidence": {"type": "string", "enum": ["high", "medium", "low"]},
+          "salience": {"type": "string", "enum": ["high", "medium", "low"]},
+          "include_in_report": {"type": "boolean"},
+          "entities": {
+            "type": "array",
+            "items": {"type": "string", "minLength": 1},
+            "uniqueItems": true
+          },
+          "contradiction_ids": {
+            "type": "array",
+            "items": {"type": "string", "pattern": "^conflict_[0-9]{3,}$"},
+            "uniqueItems": true
+          },
+          "related_claim_ids": {
+            "type": "array",
+            "items": {"type": "string", "pattern": "^claim_[0-9]{3,}$"},
+            "uniqueItems": true
+          },
+          "notes": {"type": "string"}
+        },
+        "additionalProperties": false
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "required": ["total_claims", "schema_version"],
+      "properties": {
+        "total_claims": {"type": "integer", "minimum": 0},
+        "schema_version": {"type": "string", "const": "claim_bank.v1"}
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

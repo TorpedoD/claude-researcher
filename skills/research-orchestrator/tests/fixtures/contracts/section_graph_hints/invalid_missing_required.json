@@ -1,0 +1,8 @@
+{
+  "planned_section_ids": ["consensus"],
+  "sections": [],
+  "graph_rules": {
+    "advisory_only": true,
+    "cannot_create_sections": true
+  }
+}

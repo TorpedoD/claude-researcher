@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """
-coverage_audit.py — Verify every claim in claim_index.json has a traceable destination.
+coverage_audit.py — Legacy claim_index destination audit.
+
+Deprecated for claim_pipeline_v1. New runs use report_composer.py audit against
+section_briefs/*.json, claim_slices/*.json, and output/sections/*.meta.json.
 
 Usage:
     python3 coverage_audit.py \

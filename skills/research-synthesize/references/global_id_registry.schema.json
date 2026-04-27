@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "global_id_registry.schema.json",
+  "title": "Global ID Registry",
+  "description": "Stable ID registry for claim-based research pipeline artifacts.",
+  "type": "object",
+  "required": ["source_ids", "claim_ids", "section_ids", "content_hashes"],
+  "properties": {
+    "source_ids": {
+      "type": "object",
+      "description": "Stable mapping from source identity keys to source_id values.",
+      "additionalProperties": {"type": "string", "pattern": "^src_[0-9]{3,}$"}
+    },
+    "claim_ids": {
+      "type": "object",
+      "description": "Stable mapping from claim content hashes to claim_id values.",
+      "additionalProperties": {"type": "string", "pattern": "^claim_[0-9]{3,}$"}
+    },
+    "section_ids": {
+      "type": "object",
+      "description": "Stable mapping from normalized planner section names to section_id values.",
+      "additionalProperties": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]*$"}
+    },
+    "content_hashes": {
+      "type": "object",
+      "description": "Stable reverse lookup from normalized content hashes to canonical artifact IDs.",
+      "additionalProperties": {"type": "string", "minLength": 1}
+    }
+  },
+  "additionalProperties": false
+}

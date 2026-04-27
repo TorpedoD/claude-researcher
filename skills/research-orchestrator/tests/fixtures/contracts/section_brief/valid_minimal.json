@@ -1,0 +1,8 @@
+{
+  "section_id": "consensus",
+  "title": "Consensus Mechanism",
+  "summary": "Explains consensus claims and their evidence.",
+  "must_include_claim_ids": ["claim_001"],
+  "optional_claim_ids": [],
+  "boundary_rules": ["Do not rewrite claims primary to other sections."]
+}

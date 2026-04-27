@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "formatter_audit.schema.json",
+  "title": "Formatter Audit",
+  "description": "Validation and assembly audit for report composition.",
+  "type": "object",
+  "required": ["status", "canonical_report_path", "section_meta_files", "warnings", "errors"],
+  "properties": {
+    "status": {"type": "string", "enum": ["pass", "warn", "error"]},
+    "canonical_report_path": {"type": "string", "const": "output/report.md"},
+    "section_meta_files": {
+      "type": "array",
+      "items": {"type": "string", "pattern": "^output/sections/.+\\.meta\\.json$"},
+      "uniqueItems": true
+    },
+    "repeated_claim_ids": {
+      "type": "array",
+      "items": {"type": "string", "pattern": "^claim_[0-9]{3,}$"},
+      "uniqueItems": true
+    },
+    "missing_required_claim_ids": {
+      "type": "array",
+      "items": {"type": "string", "pattern": "^claim_[0-9]{3,}$"},
+      "uniqueItems": true
+    },
+    "warnings": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "errors": {
+      "type": "array",
+      "items": {"type": "string"}
+    }
+  },
+  "additionalProperties": false
+}

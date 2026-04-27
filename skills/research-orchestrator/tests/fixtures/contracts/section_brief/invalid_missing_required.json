@@ -1,0 +1,7 @@
+{
+  "section_id": "consensus",
+  "title": "Consensus Mechanism",
+  "summary": "Explains consensus claims and their evidence.",
+  "optional_claim_ids": [],
+  "boundary_rules": ["missing must_include_claim_ids"]
+}

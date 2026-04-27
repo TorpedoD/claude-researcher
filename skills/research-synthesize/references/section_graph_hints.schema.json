@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "section_graph_hints.schema.json",
+  "title": "Section Graph Hints",
+  "description": "Advisory graph hints for planner-defined sections.",
+  "type": "object",
+  "required": ["planned_section_ids", "sections", "graph_rules"],
+  "properties": {
+    "planned_section_ids": {
+      "type": "array",
+      "items": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]*$"},
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "sections": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["section_id", "central_entities", "related_sections", "recommended_cross_links"],
+        "properties": {
+          "section_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]*$"},
+          "graph_cluster": {"type": "string"},
+          "central_entities": {
+            "type": "array",
+            "items": {"type": "string", "minLength": 1},
+            "uniqueItems": true
+          },
+          "bridge_entities": {
+            "type": "array",
+            "items": {"type": "string", "minLength": 1},
+            "uniqueItems": true
+          },
+          "related_sections": {
+            "type": "array",
+            "items": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]*$"},
+            "uniqueItems": true
+          },
+          "isolated_claims": {
+            "type": "array",
+            "items": {"type": "string", "pattern": "^claim_[0-9]{3,}$"},
+            "uniqueItems": true
+          },
+          "recommended_cross_links": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["to", "reason"],
+              "properties": {
+                "to": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]*$"},
+                "reason": {"type": "string", "minLength": 1}
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "graph_rules": {
+      "type": "object",
+      "required": ["advisory_only", "cannot_create_sections", "cannot_reorder_sections"],
+      "properties": {
+        "advisory_only": {"type": "boolean", "const": true},
+        "cannot_create_sections": {"type": "boolean", "const": true},
+        "cannot_reorder_sections": {"type": "boolean", "const": true}
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

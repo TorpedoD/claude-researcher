@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "section_brief.schema.json",
+  "title": "Section Brief",
+  "description": "Compact AI-readable section memory that references claim IDs instead of duplicating claim prose.",
+  "type": "object",
+  "required": ["section_id", "title", "summary", "must_include_claim_ids", "optional_claim_ids", "boundary_rules"],
+  "properties": {
+    "section_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]*$"},
+    "title": {"type": "string", "minLength": 1},
+    "summary": {"type": "string", "minLength": 1, "maxLength": 800},
+    "must_include_claim_ids": {
+      "type": "array",
+      "items": {"type": "string", "pattern": "^claim_[0-9]{3,}$"},
+      "uniqueItems": true
+    },
+    "optional_claim_ids": {
+      "type": "array",
+      "items": {"type": "string", "pattern": "^claim_[0-9]{3,}$"},
+      "uniqueItems": true
+    },
+    "avoid": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1}
+    },
+    "missing": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1}
+    },
+    "recommended_visuals": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["type", "reason"],
+        "properties": {
+          "type": {"type": "string", "enum": ["table", "flowchart", "diagram", "none"]},
+          "reason": {"type": "string", "minLength": 1}
+        },
+        "additionalProperties": false
+      }
+    },
+    "boundary_rules": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1},
+      "minItems": 1
+    }
+  },
+  "additionalProperties": false
+}
